@@ -6,7 +6,7 @@ export default function NotFound() {
     <div className="flex h-[80vh] flex-col items-center justify-center">
       <h1 className="mx-auto text-[30vmin] font-black text-slate-200">404</h1>
       <p className="mx-auto text-3xl font-medium text-slate-200">
-        Whoops, we couldn&apos;d that page.
+        Whoops, we couldn&apos;t find that page.
       </p>
       <Link
         href="/"
