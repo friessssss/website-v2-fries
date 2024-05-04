@@ -21,7 +21,7 @@ const ProjectList = ({ slice }: ProjectListProps): JSX.Element => {
         {slice.primary.heading}
       </Heading>
 
-      <div className="prose prose-lg prose-invert mt-4 text-slate-100">
+      <div className="prose prose-lg prose-invert mt-4 text-slate-100 text-xl">
         {slice.primary.description}
       </div>
 

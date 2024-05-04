@@ -29,10 +29,11 @@ const Experience = ({ slice }: ExperienceProps): JSX.Element => {
           <div className="mt-1 flex w-fit items-center gap-1 text-2xl font-semibold tracking-tight text-slate-400">
             <span>{item.time_period}</span>{" "}
             <span className="text-3xl font-extralight">/</span>{" "}
-            <span>{item.institution}</span>
+            <span className="bg-gradient-to-tr from-yellow-500 via-yellow-200 to-yellow-500 
+            bg-clip-text text-3xl font-semibold tracking-[.2em] text-transparent md:text-2xl align-middle">{item.institution}</span>
           </div>
-          <div className="prose prose-lg prose-invert mt-4 text-slate-100">
-            <PrismicRichText field={item.description} />
+          <div className="prose prose-lg prose-invert mt-4 text-slate-100 list-disc">
+              <PrismicRichText field={item.description}/>
           </div>
         </div>
       ))}
