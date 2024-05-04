@@ -29,7 +29,7 @@ const Hero = ({ slice }: HeroProps): JSX.Element => {
       },
       {
         x: 0, 
-        opacity: 1, 
+        opacity: 0.8, 
         rotate: 0,
         ease: "bounce.out",
         duration: 0.75,

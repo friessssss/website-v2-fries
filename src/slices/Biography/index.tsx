@@ -22,7 +22,7 @@ const Biography = ({ slice }: BiographyProps): JSX.Element => {
       data-slice-variation={slice.variation}
     >
       <div className="grid gap-x-8 gap-y-6 md:grid-cols-5">
-        <Heading size="xl" className="col-start-1 md:row-start-1 md:col-span-3">
+        <Heading size="xl" className="col-start-1 col-span-2 md:row-start-1 md:col-span-3">
           {slice.primary.heading}
         </Heading>
 
@@ -37,7 +37,7 @@ const Biography = ({ slice }: BiographyProps): JSX.Element => {
 
         <Avatar
           image={slice.primary.avatar}
-          className="row-start-1 md:row-start-2 max-w-sm md:col-start-4 md:col-span-2"
+          className="row-start-1 col-span-3 md:row-start-2 max-w-sm md:col-start-4 md:col-span-2"
         />
       </div>
     </Bounded>
