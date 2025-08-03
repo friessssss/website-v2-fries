@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import Bounded from '@/components/Bounded';
 import Heading from '@/components/Heading';
 
@@ -25,25 +26,37 @@ export default function RLTracker() {
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const [recentGoals, setRecentGoals] = useState<any[]>([]);
 
-  const fetchCurrentTrack = async () => {
+    const fetchCurrentTrack = useCallback(async () => {
     try {
       setIsRefreshing(true);
       const response = await fetch('/api/spotify/current-track');
       if (!response.ok) {
         throw new Error('Failed to fetch current track');
       }
-              const data = await response.json();
-        console.log('Frontend received track data:', data);
-        setCurrentTrack(data);
-        setLastUpdate(new Date());
-        setError(null);
+      const data = await response.json();
+      console.log('Frontend received track data:', data);
+      setCurrentTrack(data);
+      setLastUpdate(new Date());
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, []);
+
+  const fetchRecentGoals = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/goals?session=${sessionId}&limit=10`);
+      if (response.ok) {
+        const data = await response.json();
+        setRecentGoals(data.goals || []);
+      }
+    } catch (error) {
+      console.error('Error fetching recent goals:', error);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     fetchCurrentTrack();
@@ -51,7 +64,7 @@ export default function RLTracker() {
     // Refresh every 5 seconds for more responsive updates
     const interval = setInterval(fetchCurrentTrack, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchCurrentTrack, fetchRecentGoals]);
 
   const handleManualRefresh = () => {
     fetchCurrentTrack();
@@ -101,17 +114,7 @@ export default function RLTracker() {
     }
   };
 
-  const fetchRecentGoals = async () => {
-    try {
-      const response = await fetch(`/api/goals?session=${sessionId}&limit=10`);
-      if (response.ok) {
-        const data = await response.json();
-        setRecentGoals(data.goals || []);
-      }
-    } catch (error) {
-      console.error('Error fetching recent goals:', error);
-    }
-  };
+
 
   return (
     <Bounded>
@@ -120,9 +123,6 @@ export default function RLTracker() {
           <Heading size="xl" className="mb-8">
             RL Tracker
           </Heading>
-          <p className="text-xl text-slate-600 mb-8">
-            Track your Rocket League goals with the music that's playing!
-          </p>
           
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-2">
@@ -159,7 +159,7 @@ export default function RLTracker() {
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <p className="text-red-800">Error: {error}</p>
               <p className="text-red-600 text-sm mt-2">
-                Make sure your Spotify account is connected and you're currently playing music.
+                Make sure your Spotify account is connected and you&apos;re currently playing music.
               </p>
             </div>
           )}
@@ -170,9 +170,11 @@ export default function RLTracker() {
             }`}>
               <div className="flex items-center space-x-4">
                 {currentTrack.albumArt && (
-                  <img 
+                  <Image 
                     src={currentTrack.albumArt} 
                     alt={`${currentTrack.album} album art`}
+                    width={64}
+                    height={64}
                     className="w-16 h-16 rounded-lg object-cover"
                   />
                 )}
