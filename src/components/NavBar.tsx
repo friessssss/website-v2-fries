@@ -102,6 +102,26 @@ export default function NavBar({
             </Link>
           </li>
           <li>
+            <Link
+              href="/analytics"
+              className={clsx(
+                "group relative block overflow-hidden rounded px-3 text-3xl font-bold text-slate-900",
+              )}
+              onClick={() => setOpen(false)}
+              aria-current={pathname === "/analytics" ? "page" : undefined}
+            >
+              <span
+                className={clsx(
+                  "absolute inset-0 z-0 h-full translate-y-12 rounded bg-yellow-300 transition-transform duration-300 ease-in-out group-hover:translate-y-0",
+                  pathname === "/analytics"
+                    ? "translate-y-6"
+                    : "translate-y-18",
+                )}
+              />
+              <span className="relative">Analytics</span>
+            </Link>
+          </li>
+          <li>
             <Button
               linkField={settings.data.cta_link}
               label={settings.data.cta_label}
@@ -194,6 +214,33 @@ function DesktopMenu({
             )}
           />
           <span className="relative">RL Tracker</span>
+        </Link>
+      </li>
+      <li>
+        <span
+          className="hidden text-4xl font-thin leading-[0] text-slate-400 md:inline"
+          aria-hidden="true"
+        >
+          /
+        </span>
+      </li>
+      <li>
+        <Link
+          href="/analytics"
+          className={clsx(
+            "group relative block overflow-hidden rounded px-3 py-1 text-base font-bold text-slate-900",
+          )}
+          aria-current={pathname === "/analytics" ? "page" : undefined}
+        >
+          <span
+            className={clsx(
+              "absolute inset-0 z-0 h-full rounded bg-yellow-300 transition-transform  duration-300 ease-in-out group-hover:translate-y-0",
+              pathname === "/analytics"
+                ? "translate-y-6"
+                : "translate-y-8",
+            )}
+          />
+          <span className="relative">Analytics</span>
         </Link>
       </li>
       <li>

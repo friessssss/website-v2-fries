@@ -23,7 +23,7 @@ export default function RLTracker() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastGoal, setLastGoal] = useState<string | null>(null);
   const [goalCount, setGoalCount] = useState(0);
-  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [sessionId] = useState(() => 'default');
   const [recentGoals, setRecentGoals] = useState<any[]>([]);
 
     const fetchCurrentTrack = useCallback(async () => {
@@ -105,8 +105,9 @@ export default function RLTracker() {
         // Clear the last goal message after 3 seconds
         setTimeout(() => setLastGoal(null), 3000);
       } else {
-        console.error('Failed to store goal');
-        setLastGoal(`Error storing goal for ${player}`);
+        const errorData = await response.json();
+        console.error('Failed to store goal:', errorData);
+        setLastGoal(`Error storing goal for ${player}: ${errorData.details || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error storing goal:', error);
@@ -114,7 +115,32 @@ export default function RLTracker() {
     }
   };
 
-
+  const handleRemoveLastGoal = async () => {
+    try {
+      const response = await fetch(`/api/goals?sessionId=${sessionId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Goal removed successfully:', result);
+        setLastGoal(`Removed: ${result.removedGoal?.player} scored during ${result.removedGoal?.song}`);
+        setGoalCount(prev => Math.max(0, prev - 1));
+        
+        // Refresh recent goals
+        fetchRecentGoals();
+        
+        // Clear the message after 3 seconds
+        setTimeout(() => setLastGoal(null), 3000);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to remove goal:', errorData);
+        setLastGoal(`Error removing goal: ${errorData.details || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error removing goal:', error);
+      setLastGoal('Error removing goal');
+    }
+  };
 
   return (
     <Bounded>
@@ -267,6 +293,17 @@ export default function RLTracker() {
               className="py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors duration-200 shadow-md"
             >
               Zach ⚽
+            </button>
+          </div>
+
+          {/* Remove Last Goal Button */}
+          <div className="mt-4">
+            <button
+              onClick={handleRemoveLastGoal}
+              disabled={goalCount === 0}
+              className="w-full py-3 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 shadow-md"
+            >
+              🗑️ Remove Last Goal
             </button>
           </div>
         </div>

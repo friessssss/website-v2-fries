@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from 'redis';
+import clientPromise from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
+
+export const dynamic = 'force-dynamic';
 
 interface GoalData {
   player: string;
@@ -14,36 +17,45 @@ export async function POST(request: NextRequest) {
   try {
     const goalData: GoalData = await request.json();
     
-    // Create Redis client
-    const client = createClient({
-      url: process.env.REDIS_URL,
-    });
+    console.log('Attempting to store goal:', goalData);
+    console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
     
-    await client.connect();
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
+    }
     
-    // Generate a unique key for this goal
-    const goalKey = `goal:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
+    // Connect to MongoDB
+    const client = await clientPromise;
+    const db = client.db('rl-tracker');
+    const goalsCollection = db.collection('goals');
+    
+    console.log('Connected to MongoDB successfully');
+    
+    // Add creation timestamp
+    const goalToStore = {
+      ...goalData,
+      createdAt: new Date(),
+      _id: new ObjectId()
+    };
     
     // Store the goal data
-    await client.setEx(goalKey, 60 * 60 * 24 * 30, JSON.stringify(goalData)); // Expire in 30 days
+    console.log('Storing goal data...');
+    const result = await goalsCollection.insertOne(goalToStore);
     
-    // Also store in a session list for easy retrieval
-    const sessionId = goalData.sessionId || 'default';
-    await client.lPush(`session:${sessionId}:goals`, goalKey);
-    
-    await client.disconnect();
-    
-    console.log('Goal stored:', goalKey, goalData);
+    console.log('Goal stored successfully:', result.insertedId, goalData);
     
     return NextResponse.json({ 
       success: true, 
-      goalId: goalKey,
+      goalId: result.insertedId.toString(),
       message: `${goalData.player} scored during ${goalData.song}!`
     });
   } catch (error) {
     console.error('Error storing goal:', error);
     return NextResponse.json(
-      { error: 'Failed to store goal' },
+      { 
+        error: 'Failed to store goal',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -55,41 +67,101 @@ export async function GET(request: NextRequest) {
     const sessionId = searchParams.get('session') || 'default';
     const limit = parseInt(searchParams.get('limit') || '50');
     
-    // Create Redis client
-    const client = createClient({
-      url: process.env.REDIS_URL,
-    });
-    
-    await client.connect();
-    
-    // Get recent goals for this session
-    const goalKeys = await client.lRange(`session:${sessionId}:goals`, 0, limit - 1);
-    
-    if (!goalKeys.length) {
-      await client.disconnect();
-      return NextResponse.json({ goals: [] });
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
     }
     
-    // Fetch all goal data
-    const goals = await Promise.all(
-      goalKeys.map(async (key) => {
-        const goalData = await client.get(key);
-        return goalData ? JSON.parse(goalData) : null;
-      })
-    );
+    // Connect to MongoDB
+    const client = await clientPromise;
+    const db = client.db('rl-tracker');
+    const goalsCollection = db.collection('goals');
     
-    await client.disconnect();
+    // Get recent goals for this session, sorted by timestamp
+    const goals = await goalsCollection
+      .find({ sessionId })
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .toArray();
     
-    // Filter out any null values and sort by timestamp
-    const validGoals = goals
-      .filter(goal => goal !== null)
-      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Convert MongoDB documents to plain objects
+    const goalsData = goals.map(goal => ({
+      player: goal.player,
+      song: goal.song,
+      artist: goal.artist,
+      timestamp: goal.timestamp,
+      progress: goal.progress,
+      sessionId: goal.sessionId
+    }));
     
-    return NextResponse.json({ goals: validGoals });
+    return NextResponse.json({ goals: goalsData });
   } catch (error) {
     console.error('Error retrieving goals:', error);
     return NextResponse.json(
       { error: 'Failed to retrieve goals' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId') || 'default';
+    
+    console.log('Attempting to remove last goal for session:', sessionId);
+    console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
+    
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
+    }
+    
+    // Connect to MongoDB
+    const client = await clientPromise;
+    const db = client.db('rl-tracker');
+    const goalsCollection = db.collection('goals');
+    
+    console.log('Connected to MongoDB successfully');
+    
+    // Find the most recent goal for this session
+    const lastGoal = await goalsCollection
+      .findOne(
+        { sessionId },
+        { sort: { timestamp: -1 } }
+      );
+    
+    if (!lastGoal) {
+      return NextResponse.json(
+        { error: 'No goals found to remove' },
+        { status: 404 }
+      );
+    }
+    
+    console.log('Removing goal:', lastGoal._id);
+    
+    // Delete the goal
+    await goalsCollection.deleteOne({ _id: lastGoal._id });
+    
+    console.log('Goal removed successfully:', lastGoal._id);
+    
+    return NextResponse.json({ 
+      success: true, 
+      removedGoal: {
+        player: lastGoal.player,
+        song: lastGoal.song,
+        artist: lastGoal.artist,
+        timestamp: lastGoal.timestamp,
+        progress: lastGoal.progress,
+        sessionId: lastGoal.sessionId
+      },
+      message: `Removed goal: ${lastGoal.player} scored during ${lastGoal.song}`
+    });
+  } catch (error) {
+    console.error('Error removing goal:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to remove goal',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
