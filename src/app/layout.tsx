@@ -8,7 +8,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/react"
 
 import Footer from "@/components/Footer";
-import Header from "@/components/Header";
+import ConditionalHeader from "@/components/ConditionalHeader";
 
 const urbanist = Urbanist({ subsets: ["latin"] });
 
@@ -33,7 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-slate-900">
       <body className={clsx(urbanist.className, "relative min-h-screen")}>
-        <Header />
+        <ConditionalHeader />
         {children}
         <SpeedInsights/>
         <Analytics/>

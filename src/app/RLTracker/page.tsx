@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Bounded from '@/components/Bounded';
 import Heading from '@/components/Heading';
+import FriendNavBar from '@/components/FriendNavBar';
+import Toast from '@/components/Toast';
 
 interface SpotifyTrack {
   name: string;
@@ -25,6 +27,8 @@ export default function RLTracker() {
   const [goalCount, setGoalCount] = useState(0);
   const [sessionId] = useState(() => 'default');
   const [recentGoals, setRecentGoals] = useState<any[]>([]);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
     const fetchCurrentTrack = useCallback(async () => {
     try {
@@ -96,7 +100,9 @@ export default function RLTracker() {
       if (response.ok) {
         const result = await response.json();
         console.log('Goal stored successfully:', result);
-        setLastGoal(`${player} scored! (${currentTrack?.name})`);
+        const message = `${player} scored! (${currentTrack?.name})`;
+        setToastMessage(message);
+        setShowToast(true);
         setGoalCount(prev => prev + 1);
         
         // Refresh recent goals
@@ -143,8 +149,15 @@ export default function RLTracker() {
   };
 
   return (
-    <Bounded>
-      <div className="grid gap-8 lg:grid-cols-2 lg:gap-16">
+    <>
+      <Toast 
+        message={toastMessage} 
+        isVisible={showToast} 
+        onClose={() => setShowToast(false)} 
+      />
+      <FriendNavBar />
+      <Bounded>
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-16">
         <div>
           <Heading size="xl" className="mb-8">
             RL Tracker
@@ -199,9 +212,9 @@ export default function RLTracker() {
                   <Image 
                     src={currentTrack.albumArt} 
                     alt={`${currentTrack.album} album art`}
-                    width={64}
-                    height={64}
-                    className="w-16 h-16 rounded-lg object-cover"
+                    width={96}
+                    height={96}
+                    className="w-24 h-24 rounded-lg object-cover"
                   />
                 )}
                 <div className="flex-1">
@@ -235,12 +248,6 @@ export default function RLTracker() {
         {/* Goal Tracking Section */}
         <div className="bg-white rounded-lg shadow-lg p-6 border mt-6">
           <h3 className="text-xl font-semibold mb-4 text-gray-900">Goal Tracking</h3>
-          
-          {lastGoal && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-800 font-medium">🎉 {lastGoal}</p>
-            </div>
-          )}
           
           <div className="mb-4">
             <p className="text-sm text-gray-600 mb-2">Goals tracked this session: {goalCount}</p>
@@ -340,18 +347,8 @@ export default function RLTracker() {
             </div>
           )}
         </div>
-
-        <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold mb-4">How it works</h3>
-          <ul className="space-y-2 text-gray-600">
-            <li>• Connect your Spotify account</li>
-            <li>• Start playing music</li>
-            <li>• Play Rocket League</li>
-            <li>• Track goals scored during each song</li>
-            <li>• Analyze which songs bring the most goals!</li>
-          </ul>
-        </div>
       </div>
     </Bounded>
+    </>
   );
 } 

@@ -14,6 +14,7 @@ import {
 import { Bar } from 'react-chartjs-2';
 import Bounded from '@/components/Bounded';
 import Heading from '@/components/Heading';
+import FriendNavBar from '@/components/FriendNavBar';
 
 ChartJS.register(
   CategoryScale,
@@ -278,58 +279,69 @@ export default function Analytics() {
 
   if (loading) {
     return (
-      <Bounded>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="flex items-center space-x-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span>Loading analytics...</span>
+      <>
+        <FriendNavBar />
+        <Bounded>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span>Loading analytics...</span>
+            </div>
           </div>
-        </div>
-      </Bounded>
+        </Bounded>
+      </>
     );
   }
 
   if (error) {
     return (
-      <Bounded>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <h2 className="text-red-800 font-semibold mb-2">Error Loading Analytics</h2>
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={fetchAnalytics}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      </Bounded>
+      <>
+        <FriendNavBar />
+        <Bounded>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h2 className="text-red-800 font-semibold mb-2">Error Loading Analytics</h2>
+            <p className="text-red-600">{error}</p>
+            <button
+              onClick={fetchAnalytics}
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </Bounded>
+      </>
     );
   }
 
   if (!analyticsData || analyticsData.songs.length === 0) {
     return (
-      <Bounded>
-        <div className="text-center py-12">
-          <Heading size="xl" className="mb-4">
-            Analytics
-          </Heading>
-          <p className="text-gray-600 mb-6">
-            No goals have been tracked yet. Start playing Rocket League and tracking goals to see analytics here!
-          </p>
-          <button
-            onClick={fetchAnalytics}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Refresh
-          </button>
-        </div>
-      </Bounded>
+      <>
+        <FriendNavBar />
+        <Bounded>
+          <div className="text-center py-12">
+            <Heading size="xl" className="mb-4">
+              Analytics
+            </Heading>
+            <p className="text-gray-600 mb-6">
+              No goals have been tracked yet. Start playing Rocket League and tracking goals to see analytics here!
+            </p>
+            <button
+              onClick={fetchAnalytics}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </Bounded>
+      </>
     );
   }
 
   return (
-    <Bounded>
-      <div className="space-y-8">
+    <>
+      <FriendNavBar />
+      <Bounded>
+        <div className="space-y-8">
         <div className="flex items-center justify-between">
           <Heading size="xl">Analytics</Heading>
           <button
@@ -375,7 +387,7 @@ export default function Analytics() {
             <Bar data={chartData} options={chartOptions} />
           </div>
           <p className="text-sm text-gray-500 mt-4 text-center">
-            Showing top 20 {viewMode === 'songs' ? 'songs' : 'artists'} by total goals. Positive axis = Science Team goals, Negative axis = Opponent goals. Each color represents a different player.
+            Showing top 20 {viewMode === 'songs' ? 'songs' : 'artists'} by total goals.
           </p>
         </div>
 
@@ -483,5 +495,6 @@ export default function Analytics() {
         </div>
       </div>
     </Bounded>
+    </>
   );
 } 
