@@ -7,7 +7,7 @@ export default function ConditionalHeader() {
   const pathname = usePathname();
   
   // Don't show the main header on RL Tracker and Analytics pages
-  if (pathname === '/RLTracker' || pathname === '/analytics') {
+  if (pathname === '/RLTracker' || pathname === '/analytics' || pathname.startsWith('/analytics/')) {
     return null;
   }
   

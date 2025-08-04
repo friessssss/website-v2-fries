@@ -1,64 +1,76 @@
-# Spotify Integration Setup
+# Spotify OAuth Setup Guide
 
-To get your RL Tracker working with Spotify, you'll need to set up Spotify API credentials.
+## 🎯 **OAuth Flow Implementation**
 
-## Step 1: Create a Spotify App
+Your RL Tracker now uses a **client-side OAuth flow** that eliminates token expiration issues!
+
+## 🔧 **Setup Steps:**
+
+### **1. Update Spotify App Settings**
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Log in with your Spotify account
-3. Click "Create App"
-4. Fill in the app details:
-   - App name: "RL Tracker" (or whatever you prefer)
-   - App description: "Personal project for tracking Rocket League goals with music"
-   - Redirect URI: `http://localhost:3000/api/spotify/callback` (for development)
-5. Accept the terms and create the app
+2. Select your app
+3. Go to **Settings**
+4. Add this **Redirect URI**:
+   ```
+   https://zachrobertson.co/api/spotify/callback
+   ```
 
-## Step 2: Get Your Credentials
+### **2. Environment Variables**
 
-After creating the app, you'll see:
-- **Client ID** - Copy this
-- **Client Secret** - Click "Show Client Secret" and copy this
+Add these to your Vercel project settings:
 
-## Step 3: Get a Refresh Token
-
-You'll need to get a refresh token. The easiest way is to use this tool:
-
-1. Go to [Spotify Token Generator](https://github.com/spotify/web-api-auth-examples)
-2. Or use this simple method:
-   - Visit: `https://accounts.spotify.com/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost:3000/api/spotify/callback&scope=user-read-currently-playing`
-   - Replace `YOUR_CLIENT_ID` with your actual client ID
-   - Authorize the app
-   - Copy the `code` from the URL
-   - Use a tool like Postman or curl to exchange the code for a refresh token
-
-## Step 4: Set Environment Variables
-
-Create a `.env.local` file in your project root with:
-
-```env
-SPOTIFY_CLIENT_ID=your_spotify_client_id_here
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
-SPOTIFY_REFRESH_TOKEN=your_spotify_refresh_token_here
+```
+NEXT_PUBLIC_SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+MONGODB_URI=your_mongodb_connection_string
 ```
 
-## Step 5: Test It
+### **3. Update Scopes**
 
-1. Start your development server: `npm run dev`
-2. Go to `/RLTracker`
-3. Start playing music on Spotify
-4. You should see your current track displayed!
+Make sure your Spotify app has these scopes:
+- `user-read-currently-playing`
+- `user-read-playback-state`
+- `playlist-read-private`
+- `user-read-private`
 
-## Troubleshooting
+## 🎵 **How It Works:**
 
-- Make sure you're playing music on Spotify
-- Check that all environment variables are set correctly
-- The refresh token doesn't expire, so you only need to get it once
-- If you get errors, check the browser console and server logs
+### **User Experience:**
+1. Friend visits RL Tracker
+2. Sees prominent "Connect Spotify" button
+3. Clicks button → redirects to Spotify
+4. Logs in and authorizes your app
+5. Returns to RL Tracker with automatic song tracking
+6. Tokens refresh automatically in background
 
-## Next Steps
+### **Benefits:**
+- ✅ **No more token expiration issues**
+- ✅ **Each friend uses their own Spotify account**
+- ✅ **Automatic token refresh**
+- ✅ **Secure token storage in cookies**
+- ✅ **One-time setup per user**
 
-Once this is working, we can add:
-- Goal tracking functionality
-- Song history
-- Analytics on which songs correlate with more goals
-- Integration with your existing Prismic CMS for data storage 
+## 🚀 **Deployment:**
+
+1. Update your Spotify app redirect URI
+2. Add environment variables to Vercel
+3. Deploy the updated code
+4. Test the OAuth flow
+
+## 🔍 **Testing:**
+
+1. Visit your RL Tracker page
+2. Click "Connect Spotify Account"
+3. Complete the authorization flow
+4. Verify song tracking works
+5. Check that tokens refresh automatically
+
+## 🎯 **What's Different:**
+
+- **Before**: Server-side tokens that expired every 60 minutes
+- **After**: Client-side OAuth with automatic refresh
+- **Before**: Manual token management
+- **After**: Seamless user experience
+
+This new approach completely eliminates the token expiration problems! 🎵 

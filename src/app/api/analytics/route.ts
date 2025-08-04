@@ -8,6 +8,8 @@ interface GoalData {
   timestamp: string;
   progress: number;
   sessionId?: string;
+  playlist?: string;
+  playlistId?: string;
 }
 
 interface PlayerGoals {
@@ -23,6 +25,7 @@ interface SongAnalytics {
   totalGoals: number;
   netScore: number; // friendsGoals - opponentGoals
   playerBreakdown: PlayerGoals[];
+  playlist?: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -31,8 +34,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const timeFilter = searchParams.get('timeFilter') || 'lifetime';
+    const playlistFilter = searchParams.get('playlistFilter');
     
-    console.log('Fetching analytics with time filter:', timeFilter);
+    console.log('Fetching analytics with time filter:', timeFilter, 'playlist filter:', playlistFilter);
     
     if (!process.env.MONGODB_URI) {
       throw new Error('MONGODB_URI environment variable is not set');
@@ -71,7 +75,12 @@ export async function GET(request: NextRequest) {
         break;
     }
     
-    // Fetch all goals with the time filter
+    // Add playlist filter if specified
+    if (playlistFilter) {
+      dateFilter = { ...dateFilter, playlist: playlistFilter };
+    }
+    
+    // Fetch all goals with the time and playlist filters
     const allGoals = await goalsCollection.find(dateFilter).toArray();
     
     // Convert MongoDB documents to GoalData format
@@ -81,7 +90,9 @@ export async function GET(request: NextRequest) {
       artist: goal.artist,
       timestamp: goal.timestamp,
       progress: goal.progress,
-      sessionId: goal.sessionId
+      sessionId: goal.sessionId,
+      playlist: goal.playlist || null,
+      playlistId: goal.playlistId || null
     }));
     
     if (!validGoals.length) {
@@ -104,6 +115,7 @@ export async function GET(request: NextRequest) {
       totalGoals: number;
       netScore: number;
       playerBreakdown: Map<string, number>;
+      playlist?: string;
     }>();
     
     validGoals.forEach(goal => {
@@ -118,6 +130,7 @@ export async function GET(request: NextRequest) {
           totalGoals: 0,
           netScore: 0,
           playerBreakdown: new Map(),
+          playlist: goal.playlist || undefined,
         });
       }
       

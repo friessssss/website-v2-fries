@@ -31,63 +31,25 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
 }
 
 async function getCurrentTrack(accessToken: string) {
-  console.log('Fetching current track with token:', accessToken.substring(0, 20) + '...');
-  
   const response = await fetch(`https://api.spotify.com/v1/me/player/currently-playing?t=${Date.now()}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
 
-  console.log('Spotify API response status:', response.status);
-  console.log('Spotify API response headers:', Object.fromEntries(response.headers.entries()));
-
   if (!response.ok) {
     if (response.status === 204) {
-      console.log('No track currently playing (204 response)');
       return null; // No track currently playing
     }
     
     if (response.status === 401) {
-      console.log('Token expired (401 response)');
       throw new Error('TOKEN_EXPIRED');
     }
     
-    if (response.status === 403) {
-      const errorText = await response.text();
-      console.error('Spotify API 403 Forbidden error:', errorText);
-      throw new Error('INSUFFICIENT_PERMISSIONS');
-    }
-    
-    const errorText = await response.text();
-    console.error('Spotify API error response:', errorText);
     throw new Error(`Failed to fetch current track: ${response.status} ${response.statusText}`);
   }
 
-  // Check if response has content
-  const responseText = await response.text();
-  console.log('Spotify API response text length:', responseText.length);
-  console.log('Spotify API response text preview:', responseText.substring(0, 200));
-
-  if (!responseText || responseText.trim() === '') {
-    console.log('Empty response from Spotify API');
-    return null;
-  }
-
-  try {
-    const data = JSON.parse(responseText);
-    console.log('Successfully parsed track data:', {
-      name: data.item?.name,
-      artist: data.item?.artists?.[0]?.name,
-      isPlaying: data.is_playing
-    });
-    
-    return data;
-  } catch (parseError) {
-    console.error('Failed to parse JSON response:', parseError);
-    console.error('Response text that failed to parse:', responseText);
-    throw new Error('INVALID_JSON_RESPONSE');
-  }
+  return await response.json();
 }
 
 async function getPlaylistInfo(accessToken: string, playlistId: string) {
@@ -103,31 +65,17 @@ async function getPlaylistInfo(accessToken: string, playlistId: string) {
     });
 
     if (!response.ok) {
-      console.log(`Playlist API returned ${response.status} for playlist ${playlistId}`);
       return null;
     }
 
-    const responseText = await response.text();
-    
-    if (!responseText || responseText.trim() === '') {
-      console.log('Empty response from playlist API');
-      return null;
-    }
-
-    try {
-      const data = JSON.parse(responseText);
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        images: data.images,
-      };
-    } catch (parseError) {
-      console.error('Failed to parse playlist JSON response:', parseError);
-      return null;
-    }
+    const data = await response.json();
+    return {
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      images: data.images,
+    };
   } catch (error) {
-    console.error('Error fetching playlist info:', error);
     return null;
   }
 }
@@ -138,15 +86,7 @@ export async function GET(request: NextRequest) {
     const accessToken = request.cookies.get('spotify_access_token')?.value;
     const refreshToken = request.cookies.get('spotify_refresh_token')?.value;
 
-    console.log('Request received - tokens present:', {
-      hasAccessToken: !!accessToken,
-      hasRefreshToken: !!refreshToken,
-      accessTokenLength: accessToken?.length || 0,
-      refreshTokenLength: refreshToken?.length || 0
-    });
-
     if (!accessToken || !refreshToken) {
-      console.log('Missing tokens, returning needsAuth');
       return NextResponse.json(
         { error: 'Not authenticated', needsAuth: true },
         { status: 401 }
@@ -160,7 +100,6 @@ export async function GET(request: NextRequest) {
       const currentTrackData = await getCurrentTrack(currentAccessToken);
 
       if (!currentTrackData || !currentTrackData.item) {
-        console.log('No track data returned');
         return NextResponse.json({
           name: 'No track playing',
           artist: '',
@@ -198,27 +137,18 @@ export async function GET(request: NextRequest) {
         playlist: playlistInfo,
       };
 
-      console.log('Returning successful response:', {
-        name: response.name,
-        artist: response.artist,
-        isPlaying: response.isPlaying
-      });
-
       return NextResponse.json(response);
 
     } catch (error) {
       if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
-        console.log('Token expired, attempting refresh');
         // Token expired, try to refresh
         try {
           const newAccessToken = await refreshAccessToken(refreshToken);
-          console.log('Token refreshed successfully');
           
           // Try again with new token
           const currentTrackData = await getCurrentTrack(newAccessToken);
           
           if (!currentTrackData || !currentTrackData.item) {
-            console.log('No track data after token refresh');
             return NextResponse.json({
               name: 'No track playing',
               artist: '',
@@ -266,11 +196,9 @@ export async function GET(request: NextRequest) {
             path: '/',
           });
 
-          console.log('Returning successful response after token refresh');
           return apiResponse;
 
         } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError);
           // Refresh failed, user needs to re-authenticate
           return NextResponse.json(
             { error: 'Authentication expired', needsAuth: true },
@@ -279,31 +207,6 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      if (error instanceof Error && error.message === 'INSUFFICIENT_PERMISSIONS') {
-        console.error('Insufficient permissions error');
-        return NextResponse.json(
-          { 
-            error: 'Insufficient permissions',
-            message: 'Your Spotify account doesn\'t have the required permissions. Please reconnect your account.',
-            needsAuth: true
-          },
-          { status: 403 }
-        );
-      }
-      
-      if (error instanceof Error && error.message === 'INVALID_JSON_RESPONSE') {
-        console.error('Invalid JSON response error');
-        return NextResponse.json(
-          { 
-            error: 'Invalid response from Spotify',
-            message: 'Spotify returned an invalid response. This might be a temporary issue. Please try again in a moment.',
-            needsAuth: false
-          },
-          { status: 500 }
-        );
-      }
-      
-      console.error('Unexpected error:', error);
       throw error;
     }
 

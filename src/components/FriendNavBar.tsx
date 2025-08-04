@@ -16,10 +16,10 @@ export default function FriendNavBar() {
             </div>
           </div>
           
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center space-x-2 sm:space-x-4 md:space-x-8">
             <Link
               href="/RLTracker"
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
+              className={`px-2 py-1 sm:px-3 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors duration-200 ${
                 pathname === '/RLTracker'
                   ? 'bg-gray-700 text-white'
                   : 'text-gray-300 hover:text-white hover:bg-gray-700'
@@ -28,20 +28,35 @@ export default function FriendNavBar() {
               🎮 Track Goals
             </Link>
             
-            <Link
-              href="/analytics"
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                pathname === '/analytics'
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-700'
-              }`}
-            >
-              📊 Analytics
-            </Link>
+                    <Link
+          href="/analytics"
+          className={`px-2 py-1 sm:px-3 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors duration-200 ${
+            pathname === '/analytics'
+              ? 'bg-gray-700 text-white'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700'
+          }`}
+        >
+          📊 Analytics
+        </Link>
+        
+        <Link
+          href="/analytics/songs"
+          className={`px-2 py-1 sm:px-3 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors duration-200 ${
+            pathname === '/analytics/songs'
+              ? 'bg-gray-700 text-white'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700'
+          }`}
+        >
+          🎵 All Songs
+        </Link>
+            
+            
+            
+
             
             <Link
               href="/"
-              className="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+              className="px-2 py-1 sm:px-3 sm:py-2 rounded-md text-xs sm:text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
             >
               🏠 Back to Site
             </Link>

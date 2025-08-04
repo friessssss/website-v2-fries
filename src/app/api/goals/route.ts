@@ -11,6 +11,8 @@ interface GoalData {
   timestamp: string;
   progress: number;
   sessionId?: string;
+  playlist?: string;
+  playlistId?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -90,7 +92,9 @@ export async function GET(request: NextRequest) {
       artist: goal.artist,
       timestamp: goal.timestamp,
       progress: goal.progress,
-      sessionId: goal.sessionId
+      sessionId: goal.sessionId,
+      playlist: goal.playlist || null,
+      playlistId: goal.playlistId || null
     }));
     
     return NextResponse.json({ goals: goalsData });
