@@ -13,6 +13,7 @@ import {
   Legend,
   ChartOptions,
   Filler,
+  LineController,
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import Bounded from '@/components/Bounded';
@@ -28,7 +29,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  LineController
 );
 
 interface PlayerGoals {
