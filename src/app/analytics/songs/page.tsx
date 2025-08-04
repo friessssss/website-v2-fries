@@ -247,7 +247,7 @@ export default function SongsPage() {
         <div className="space-y-4">
           {sortedData.map((item, index) => (
                          <div 
-               key={viewMode === 'songs' ? `${item.song}-${item.artist}` : item.artist} 
+               key={viewMode === 'songs' ? `${(item as SongAnalytics).song}-${item.artist}` : item.artist} 
                className="bg-white rounded-lg shadow-lg p-4 border hover:shadow-xl transition-shadow duration-200 relative overflow-hidden"
              >
                {/* Background tint overlay */}
@@ -274,10 +274,10 @@ export default function SongsPage() {
                    </div>
                    <div className="flex-1">
                      <div className="font-semibold text-lg text-gray-800">
-                       {viewMode === 'songs' ? cleanSongName(item.song) : item.artist}
+                       {viewMode === 'songs' ? cleanSongName((item as SongAnalytics).song) : item.artist}
                      </div>
                      <div className="text-gray-600">
-                       {viewMode === 'songs' ? item.artist : `${item.songs.length} songs`}
+                       {viewMode === 'songs' ? item.artist : `${(item as ArtistAnalytics).songs.length} songs`}
                      </div>
                    </div>
                  </div>
