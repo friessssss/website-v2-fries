@@ -21,7 +21,6 @@ export function LenisProvider({ children }: LenisProviderProps) {
     const lenisInstance = new Lenis({
       duration: 1.25,
       smoothWheel: true,
-      smoothTouch: false,
       easing: (t) => Math.min(1, 1 - Math.pow(1 - t, 3)),
     });
 
