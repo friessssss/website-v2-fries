@@ -1,12 +1,99 @@
+@import "lenis/dist/lenis.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-.background-gradient {
-  background: radial-gradient(
-    circle at top center,
-    hsla(222, 80%, 60%, 0.5) 0%,
-    hsla(222, 0%, 0%, 0) 50%,
-    hsla(222, 0%, 0%, 0) 100%
-  );
+:root {
+  color-scheme: dark;
+  --page-bg: #070b05;
+  --page-fg: #f7f9f2;
+  --accent-lime: #c3ff41;
+  --accent-muted: #96a17c;
+  font-feature-settings: "ss01" 1, "cv11" 1;
+}
+
+* {
+  scroll-behavior: auto;
+}
+
+body {
+  background: var(--page-bg);
+  color: var(--page-fg);
+  min-height: 100vh;
+  font-family: inherit;
+}
+
+.hero-field {
+  position: relative;
+  background: radial-gradient(circle at 20% 10%, #14220f 0%, transparent 55%),
+    radial-gradient(circle at 80% -20%, rgba(195, 255, 65, 0.2), transparent 40%),
+    linear-gradient(135deg, #070c05, #091307 60%, #050804);
+}
+
+.hero-field::before,
+.hero-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-field::before {
+  background-image: radial-gradient(
+      circle at 15% 20%,
+      rgba(195, 255, 65, 0.25),
+      transparent 50%
+    ),
+    radial-gradient(circle at 80% -10%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.07) 0%,
+      transparent 35%,
+      transparent 80%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+  opacity: 0.85;
+}
+
+.hero-field::after {
+  background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px
+    ),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 160px 160px;
+  opacity: 0.25;
+}
+
+.hero-highlight {
+  color: var(--accent-lime);
+  letter-spacing: -0.02em;
+}
+
+.hero-name {
+  color: #fdfef8;
+  text-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+  position: relative;
+  z-index: 2;
+}
+
+.hero-tagline,
+.hero-line {
+  color: rgba(247, 249, 242, 0.85);
+}
+
+.glass-panel {
+  background: rgba(7, 10, 5, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+::selection {
+  background-color: rgba(195, 255, 65, 0.35);
+  color: #050a04;
 }
