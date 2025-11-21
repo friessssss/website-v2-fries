@@ -1,0 +1,167 @@
+import { defineField, defineType } from "sanity";
+
+const homePage = defineType({
+  name: "homePage",
+  title: "Home Page",
+  type: "document",
+  groups: [
+    { name: "hero", title: "Hero" },
+    { name: "about", title: "About" },
+    { name: "experience", title: "Experience" },
+    { name: "projects", title: "Projects" },
+    { name: "rl", title: "Rocket League" },
+    { name: "audio", title: "Audio & Spotify" },
+  ],
+  fields: [
+    defineField({
+      name: "heroEyebrow",
+      title: "Hero Eyebrow",
+      type: "string",
+      group: "hero",
+    }),
+    defineField({
+      name: "heroTitle",
+      title: "Hero Title",
+      type: "string",
+      group: "hero",
+      validation: (rule) => rule.required(),
+    }),
+    defineField({
+      name: "heroSubtitle",
+      title: "Hero Subtitle",
+      type: "text",
+      rows: 3,
+      group: "hero",
+    }),
+    defineField({
+      name: "heroImage",
+      title: "Hero Image",
+      type: "image",
+      options: {
+        hotspot: true,
+      },
+      group: "hero",
+    }),
+    defineField({
+      name: "heroCtas",
+      title: "Hero CTAs",
+      type: "array",
+      of: [{ type: "cta" }],
+      group: "hero",
+    }),
+    defineField({
+      name: "heroStats",
+      title: "Hero Highlight Stats",
+      type: "array",
+      of: [{ type: "stat" }],
+      group: "hero",
+    }),
+    defineField({
+      name: "aboutTitle",
+      title: "About Title",
+      type: "string",
+      group: "about",
+    }),
+    defineField({
+      name: "aboutBody",
+      title: "About Body",
+      type: "array",
+      of: [{ type: "block" }],
+      group: "about",
+    }),
+    defineField({
+      name: "aboutHighlights",
+      title: "About Highlights",
+      type: "array",
+      of: [{ type: "string" }],
+      group: "about",
+    }),
+    defineField({
+      name: "experienceHeading",
+      title: "Experience Heading",
+      type: "string",
+      group: "experience",
+    }),
+    defineField({
+      name: "experienceEntries",
+      title: "Experience Entries",
+      type: "array",
+      of: [{ type: "experienceEntry" }],
+      group: "experience",
+    }),
+    defineField({
+      name: "projectHeading",
+      title: "Projects Heading",
+      type: "string",
+      group: "projects",
+    }),
+    defineField({
+      name: "projects",
+      title: "Projects",
+      type: "array",
+      of: [{ type: "projectCard" }],
+      group: "projects",
+    }),
+    defineField({
+      name: "rlHeading",
+      title: "Rocket League Heading",
+      type: "string",
+      group: "rl",
+    }),
+    defineField({
+      name: "rlDescription",
+      title: "Rocket League Description",
+      type: "text",
+      rows: 3,
+      group: "rl",
+    }),
+    defineField({
+      name: "rlStats",
+      title: "Rocket League Stats",
+      type: "array",
+      of: [{ type: "string" }],
+      group: "rl",
+    }),
+    defineField({
+      name: "rlCta",
+      title: "Rocket League CTA",
+      type: "cta",
+      group: "rl",
+    }),
+    defineField({
+      name: "nowPlayingHeading",
+      title: "Now Playing Heading",
+      type: "string",
+      group: "audio",
+    }),
+    defineField({
+      name: "nowPlayingBody",
+      title: "Now Playing Body",
+      type: "text",
+      rows: 3,
+      group: "audio",
+    }),
+    defineField({
+      name: "spotifyHandle",
+      title: "Spotify Handle",
+      type: "string",
+      group: "audio",
+    }),
+    defineField({
+      name: "playlistEmbed",
+      title: "Playlist Embed URL",
+      type: "url",
+      group: "audio",
+    }),
+    defineField({
+      name: "featuredTracks",
+      title: "Featured Tracks",
+      type: "array",
+      of: [{ type: "playlistPick" }],
+      group: "audio",
+    }),
+  ],
+});
+
+export default homePage;
+

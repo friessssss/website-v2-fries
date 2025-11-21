@@ -2,11 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-.background-gradient {
-  background: radial-gradient(
-    circle at top center,
-    hsla(222, 80%, 60%, 0.5) 0%,
-    hsla(222, 0%, 0%, 0) 50%,
-    hsla(222, 0%, 0%, 0) 100%
-  );
+:root {
+  color-scheme: dark;
+  --accent-fancy: #f15a24;
+  --accent-simple: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #05070c;
+  color: #f5f5f1;
+  font-family: var(--font-display), "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 140px 140px;
+}
+
+.noise {
+  background-image: url("/noisetexture.jpg");
+  background-size: 512px;
+  mix-blend-mode: soft-light;
 }

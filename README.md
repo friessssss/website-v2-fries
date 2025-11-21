@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+## Zach Robertson — Personal Site
 
-## Getting Started
+Next.js 14 app router project powering Zach's personal site, Rocket League telemetry tools, and Spotify integrations. The marketing surface is driven by Sanity CMS with a dual-mode landing experience:
 
-First, run the development server:
+- **Fancy mode** — Neo-brutalist layout with Lenis smooth scrolling and a Three.js fluid cursor.
+- **Simple mode** — Accessible stacked layout for folks who prefer traditional scrolling.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Requirements
+
+- Node.js 20+
+- npm 10+
+- Sanity project (v3)
+- MongoDB + Redis/KV for Rocket League + Spotify services (see `MONGODB_SETUP.md`, `REDIS_SETUP.md`, `VERCEL_KV_SETUP.md`)
+
+## Scripts
+
+| Script        | Description                              |
+| ------------- | ---------------------------------------- |
+| `npm run dev` | Start Next.js locally on `localhost:3000` |
+| `npm run build` | Production build                        |
+| `npm run start` | Run the built output                    |
+| `npm run lint` | ESLint                                   |
+| `npm run studio` | Launch Sanity Studio locally           |
+
+## Environment Variables
+
+Create `.env.local` with at least:
+
+```
+NEXT_PUBLIC_SANITY_PROJECT_ID=xxxx
+NEXT_PUBLIC_SANITY_DATASET=production
+NEXT_PUBLIC_SANITY_API_VERSION=2024-06-01
+SANITY_PREVIEW_SECRET=some-long-string
+SANITY_REVALIDATE_SECRET=another-secret
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Existing Spotify + Rocket League services keep their previous envs (see the `SPOTIFY_*` docs in the repo).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Sanity Studio
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+1. `npm run studio` to open the embedded Studio (`http://localhost:3333` by default) or visit `/studio` when running `npm run dev`.
+2. Manage:
+   - `siteSettings` document for nav/footer/meta + accent colors.
+   - `homePage` document for hero, about, experience, projects, Rocket League, and Now Playing copy.
+3. Webhook → `POST /api/revalidate` with `secret` = `SANITY_REVALIDATE_SECRET` and payload `{ "tag": "sanity-home", "path": "/" }` to refresh ISR.
 
-## Learn More
+## Fancy vs Simple Landing
 
-To learn more about Next.js, take a look at the following resources:
+- The hero toggle stores the preferred mode in `localStorage`. Reduced-motion users default to the Simple variant.
+- Fancy mode additionally loads Lenis + the fluid cursor Canvas. Simple mode avoids those scripts entirely.
+- Share content between both modes via Sanity (no duplication required).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Rocket League + Spotify
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+All existing analytics, OAuth, and tracking routes remain untouched. After deploying:
 
-## Deploy on Vercel
+1. Run through `RLTracker` to confirm goal logging still works.
+2. Connect Spotify via `/RLTracker` and ensure `/api/spotify/*` endpoints respond (see `SPOTIFY_SETUP.md`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+Deploy to Vercel (recommended) or any platform that supports Next.js 14 app router. Make sure Sanity env vars + Spotify credentials are set in the hosting environment. For Studio previews, point your Sanity project’s CORS + webhook configs to the deployed domain.
