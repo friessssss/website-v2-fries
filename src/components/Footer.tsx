@@ -1,91 +1,64 @@
-import clsx from "clsx";
-import React from "react";
-import { createClient } from "@/prismicio";
-import { PrismicNextLink } from "@prismicio/next";
-import Link from "next/link";
-import Bounded from "@/components/Bounded";
-import { isFilled } from "@prismicio/client";
-import { FaGithub, FaTwitter, FaLinkedin } from "react-icons/fa6";
-import { FaCar } from "react-icons/fa";
+import Link from 'next/link';
+import { FaGithub, FaLinkedin } from 'react-icons/fa6';
 
-export default async function Footer() {
-  const client = createClient();
-  const settings = await client.getSingle("settings");
+const socials = [
+  {
+    icon: <FaGithub />,
+    href: 'https://github.com/zrobertson',
+    label: 'Github',
+  },
+  {
+    icon: <FaLinkedin />,
+    href: 'https://www.linkedin.com/in/zrobertson',
+    label: 'LinkedIn',
+  },
+];
+
+export default function Footer() {
+  const year = new Date().getFullYear();
   return (
-    <Bounded as="footer" className="text-slate-600">
-      <div className="container mx-auto mt-20 flex flex-col items-center justify-between gap-6 py-8 sm:flex-row ">
-        <div className="name flex flex-col items-center justify-center gap-x-4 gap-y-2 sm:flex-row sm:justify-self-start">
-          <Link
-            href="/"
-            className="text-xl font-extrabold tracking-tighter text-slate-100 transition-colors duration-150 hover:text-yellow-400"
-          >
-            {settings.data.name}
-          </Link>
-          <span
-            className="hidden text-5xl font-extralight leading-[0] text-slate-400 sm:inline"
-            aria-hidden={true}
-          >
-            /
-          </span>
-          <p className=" text-sm text-slate-300 ">
-            © {new Date().getFullYear()} {settings.data.name}
+    <footer id="contact" className="relative z-10 px-6 pb-16 pt-24">
+      <div className="mx-auto flex max-w-6xl flex-col gap-10 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-8 text-slate-300 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.55em] text-slate-500">
+            Contact
+          </p>
+          <h2 className="mt-3 text-3xl font-semibold text-slate-100 md:text-4xl">
+            Ready to connect hardware, firmware, and software into one signal.
+          </h2>
+          <p className="mt-4 max-w-xl text-base text-slate-400">
+            I’m based in Nashville and work across embedded systems, robotics,
+            and cloud orchestration. The inbox is always open for new builds and
+            gnarly integrations.
           </p>
         </div>
-        <nav className="navigation" aria-label="Footer Navigation">
-          <ul className="flex items-center gap-1">
-            {settings.data.nav_item.map(({ link, label }, index) => (
-              <React.Fragment key={label}>
-                <li>
-                  <PrismicNextLink
-                    className={clsx(
-                      "group relative block overflow-hidden  rounded px-3 py-1 text-base font-bold text-slate-100 transition-colors duration-150 hover:hover:text-yellow-400",
-                    )}
-                    field={link}
-                  >
-                    {label}
-                  </PrismicNextLink>
-                </li>
-                {index < settings.data.nav_item.length - 1 && (
-                  <span
-                    className="text-4xl font-thin leading-[0] text-slate-400"
-                    aria-hidden="true"
-                  >
-                    /
-                  </span>
-                )}
-              </React.Fragment>
-            ))}
-          </ul>
-        </nav>
-        <div className="socials inline-flex justify-center sm:justify-end">
-          {isFilled.link(settings.data.github_link) && (
-            <PrismicNextLink
-              field={settings.data.github_link}
-              className="p-2 text-2xl text-slate-300 transition-all duration-150 hover:scale-125 hover:text-yellow-400"
-              aria-label={settings.data.name + " on GitHub"}
-            >
-              <FaGithub />
-            </PrismicNextLink>
-          )}
-          {isFilled.link(settings.data.linkedin_link) && (
-            <PrismicNextLink
-              field={settings.data.linkedin_link}
-              className="p-2 text-2xl text-slate-300 transition-all duration-150 hover:scale-125 hover:text-yellow-400"
-              aria-label={settings.data.name + " on LinkedIn"}
-            >
-              <FaLinkedin />
-            </PrismicNextLink>
-          )}
+        <div className="flex flex-col gap-4 text-sm font-semibold uppercase tracking-[0.2em]">
           <Link
-            href="/RLTracker"
-            className="p-2 text-2xl text-slate-300 transition-all duration-150 hover:scale-125 hover:text-yellow-400"
-            aria-label="RL Tracker"
-            title="RL Tracker"
+            href="mailto:hey@zachrobertson.co"
+            className="rounded-full border border-slate-500/40 bg-slate-900/80 px-6 py-3 text-center text-slate-100 transition hover:border-white/60 hover:text-white"
           >
-            <FaCar />
+            Email Zach
           </Link>
+          <div className="flex items-center justify-center gap-4 text-2xl text-slate-400">
+            {socials.map((social) => (
+              <Link
+                key={social.href}
+                href={social.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={social.label}
+                className="rounded-full border border-transparent p-3 transition hover:border-slate-700 hover:text-white"
+              >
+                {social.icon}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
-    </Bounded>
+      <div className="mx-auto mt-6 flex max-w-6xl flex-col gap-2 text-xs uppercase tracking-[0.4em] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <span>Zach Robertson — Hardware & Software integration</span>
+        <span>© {year}</span>
+      </div>
+    </footer>
   );
 }
