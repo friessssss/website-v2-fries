@@ -66,6 +66,12 @@
   scroll-behavior: auto;
 }
 
+html {
+  /* Ensure touch scrolling works on mobile */
+  touch-action: pan-y;
+  overflow-x: hidden;
+}
+
 body {
   background: var(--page-bg);
   color: var(--page-fg);
@@ -73,6 +79,9 @@ body {
   font-family: 'New Spirit', 'Times New Roman', serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Ensure body allows scrolling on mobile */
+  overflow-x: hidden;
+  position: relative;
 }
 
 .font-chikoria,

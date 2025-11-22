@@ -1,8 +1,14 @@
 'use client';
 
-import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useLenisScroll } from '@/components/LenisProvider';
 import SignalChainCanvas from './SignalChainCanvas';
+import TopographicBackground from './TopographicBackground';
+
+// Register GSAP plugins
+gsap.registerPlugin(ScrollTrigger);
 
 type BioSectionProps = {
   paragraphs: string[];
@@ -11,22 +17,189 @@ type BioSectionProps = {
 
 export default function BioSection({ paragraphs, signals }: BioSectionProps) {
   const sectionRef = useRef<HTMLElement | null>(null);
-  const [visible, setVisible] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const headingsRef = useRef<HTMLHeadingElement[]>([]);
+  const lenis = useLenisScroll();
+  const lastScrollTimeRef = useRef(0);
 
   useEffect(() => {
-    if (!sectionRef.current) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(sectionRef.current);
-    return () => observer.disconnect();
-  }, []);
+    if (!sectionRef.current || !contentRef.current || !lenis) return;
+
+    // Detect mobile/touch device
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    // Integrate Lenis with ScrollTrigger
+    lenis.on('scroll', ScrollTrigger.update);
+
+    // Magnetic snap effect - continuous pull when in range
+    let magneticRaf: number | null = null;
+    let isUserScrolling = false;
+    let scrollStopTimeout: NodeJS.Timeout | null = null;
+
+    const handleScroll = () => {
+      isUserScrolling = true;
+      lastScrollTimeRef.current = Date.now();
+      
+      // Reset scroll stop detection
+      if (scrollStopTimeout) clearTimeout(scrollStopTimeout);
+      scrollStopTimeout = setTimeout(() => {
+        isUserScrolling = false;
+      }, 150);
+    };
+
+    lenis.on('scroll', handleScroll);
+
+    const ctx = gsap.context(() => {
+      // Set initial hidden state - no scale to avoid jumpiness
+      gsap.set(contentRef.current, {
+        opacity: 0,
+        y: 80,
+      });
+
+      gsap.set(headingsRef.current, {
+        opacity: 0,
+        y: 30,
+      });
+
+      // Magnetic snap trigger zone - continuous pull effect
+      const magneticTrigger = ScrollTrigger.create({
+        trigger: sectionRef.current,
+        start: 'top 80%',
+        end: 'bottom 20%',
+        onUpdate: () => {
+          if (isUserScrolling) {
+            if (magneticRaf) {
+              cancelAnimationFrame(magneticRaf);
+              magneticRaf = null;
+            }
+            return;
+          }
+          
+          const sectionTop = sectionRef.current!.getBoundingClientRect().top;
+          const viewportCenter = window.innerHeight / 2;
+          const distanceFromCenter = sectionTop - viewportCenter;
+          const maxDistance = window.innerHeight * 0.25; // Magnetic field extends 25% of viewport
+          
+          // Only apply magnetic pull if within range and user has stopped scrolling
+          // On mobile, use longer delay and weaker strength to avoid interfering with touch scrolling
+          const scrollDelay = isTouchDevice ? 600 : 400;
+          const timeSinceScroll = Date.now() - lastScrollTimeRef.current;
+          if (Math.abs(distanceFromCenter) < maxDistance && timeSinceScroll > scrollDelay) {
+            // Calculate magnetic strength (stronger when closer to center, weaker at edges)
+            // Reduce strength on mobile to avoid interfering with touch scrolling
+            const baseStrength = isTouchDevice ? 0.06 : 0.12;
+            const normalizedDistance = Math.abs(distanceFromCenter) / maxDistance;
+            const magneticStrength = Math.pow(1 - normalizedDistance, 2) * baseStrength;
+            
+            // Apply gradual magnetic pull using requestAnimationFrame for smoothness
+            if (!magneticRaf) {
+              const applyMagneticPull = () => {
+                if (isUserScrolling) {
+                  magneticRaf = null;
+                  return;
+                }
+                
+                const currentSectionTop = sectionRef.current!.getBoundingClientRect().top;
+                const currentDistance = currentSectionTop - viewportCenter;
+                
+                if (Math.abs(currentDistance) > 5) { // Only adjust if more than 5px away
+                  const pullAmount = -currentDistance * magneticStrength * 0.1; // Gradual pull
+                  lenis.scrollTo(lenis.scroll + pullAmount, {
+                    duration: 0.1,
+                    easing: (t) => t, // Linear for smooth continuous pull
+                    immediate: false,
+                  });
+                  
+                  magneticRaf = requestAnimationFrame(applyMagneticPull);
+                } else {
+                  magneticRaf = null;
+                }
+              };
+              
+              magneticRaf = requestAnimationFrame(applyMagneticPull);
+            }
+          } else {
+            // Stop magnetic pull when out of range
+            if (magneticRaf) {
+              cancelAnimationFrame(magneticRaf);
+              magneticRaf = null;
+            }
+          }
+        },
+        onLeave: () => {
+          if (magneticRaf) {
+            cancelAnimationFrame(magneticRaf);
+            magneticRaf = null;
+          }
+        },
+        onLeaveBack: () => {
+          if (magneticRaf) {
+            cancelAnimationFrame(magneticRaf);
+            magneticRaf = null;
+          }
+        },
+      });
+
+      // Smooth entrance animation - no conflicting transforms
+      const entranceTL = gsap.timeline({
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: 'top 75%',
+          end: 'top 25%',
+          toggleActions: 'play none none reverse',
+        },
+      });
+
+      // Animate container smoothly
+      entranceTL.to(contentRef.current, {
+        opacity: 1,
+        y: 0,
+        duration: 1.2,
+        ease: 'power2.out',
+      });
+
+      // Stagger animate headings smoothly - no scale or rotation to avoid jumpiness
+      entranceTL.to(
+        headingsRef.current,
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.9,
+          stagger: {
+            amount: 0.5,
+            from: 'start',
+          },
+          ease: 'power2.out',
+        },
+        '-=0.8',
+      );
+
+      // Subtle glow effect when section is active
+      const glowTL = gsap.timeline({
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: 'top 65%',
+          end: 'top 35%',
+          toggleActions: 'play none none reverse',
+        },
+      });
+
+      glowTL.to(headingsRef.current, {
+        filter: 'drop-shadow(0 0 15px rgba(16, 185, 129, 0.25))',
+        duration: 1.0,
+        stagger: 0.08,
+        ease: 'power1.out',
+      });
+    });
+
+    return () => {
+      ctx.revert();
+      lenis.off('scroll', ScrollTrigger.update);
+      lenis.off('scroll', handleScroll);
+      if (scrollStopTimeout) clearTimeout(scrollStopTimeout);
+      if (magneticRaf) cancelAnimationFrame(magneticRaf);
+    };
+  }, [lenis]);
 
   return (
     <section
@@ -34,37 +207,45 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
       id="bio"
       className="relative isolate overflow-hidden bg-white px-6 py-24 text-slate-900"
     >
-      <div className="mx-auto grid max-w-6xl gap-16 lg:grid-cols-[1.2fr_0.8fr]">
+      {/* Topographic background */}
+      <TopographicBackground />
+      
+      <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center">
         <div
-          className={clsx(
-            'space-y-6 transition-all duration-700 ease-[cubic-bezier(0.26,0.6,0.33,1)]',
-            visible ? 'translate-x-0 opacity-100' : '-translate-x-16 opacity-0',
-          )}
+          ref={contentRef}
+          className="flex flex-col items-center justify-center space-y-6 text-center"
         >
-          <p className="text-xs uppercase tracking-[0.6em] text-slate-500">Full bio</p>
-          <h2 className="text-4xl font-semibold text-slate-900 sm:text-5xl">
-            Integration is an instrument—every layer needs to resonate.
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[0] = el; }}
+            className="text-5xl"
+          >
+            Chasing <span className="!text-emerald-700 font-chikoria font-bold">faults</span> and{' '}
+            <span className="!text-emerald-700 font-chikoria font-bold">fixes</span>,<br /> with equal thrill.
           </h2>
-          <div className="space-y-6 text-lg leading-relaxed text-slate-700">
-            {paragraphs.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
-            ))}
-          </div>
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[1] = el; }}
+            className="text-5xl"
+          >
+            Merging software, hardware, and <span className="!text-emerald-700 font-chikoria font-bold">chaos</span> into something
+            that <span className="!text-emerald-700 font-chikoria font-bold">works</span>.
+          </h2>
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[2] = el; }}
+            className="text-5xl"
+          >
+            Defining a new era of <span className="!text-emerald-700 font-chikoria font-bold">electric adventure</span>.
+          </h2>
         </div>
-        <div
+        {/* <div
           className={clsx(
             'rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-2xl shadow-slate-200/40 transition-all duration-700 ease-[cubic-bezier(0.26,0.6,0.33,1)] overflow-hidden',
             visible ? 'translate-x-0 opacity-100' : 'translate-x-16 opacity-0',
           )}
         >
-          <div className="p-6 pb-4 sm:p-8 sm:pb-4">
-            <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Signal chain</p>
-            <p className="mt-2 text-xs text-slate-400">Interactive 3D • Drag the wires!</p>
-          </div>
           <div className="h-[500px] w-full sm:h-[600px] md:h-[700px]">
             <SignalChainCanvas />
           </div>
-        </div>
+        </div> */}
       </div>
     </section>
   );

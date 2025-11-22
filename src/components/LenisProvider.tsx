@@ -18,10 +18,22 @@ export function LenisProvider({ children }: LenisProviderProps) {
   const frameRef = useRef<number>();
 
   useEffect(() => {
+    // Detect if device is mobile/touch
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
     const lenisInstance = new Lenis({
-      duration: 1.25,
+      duration: isTouchDevice ? 1.0 : 1.25, // Faster on mobile for better responsiveness
       smoothWheel: true,
+      smoothTouch: true, // Enable smooth scrolling on touch devices
+      touchMultiplier: isTouchDevice ? 2.5 : 2, // Higher multiplier for mobile
       easing: (t) => Math.min(1, 1 - Math.pow(1 - t, 3)),
+      wheelMultiplier: 1,
+      infinite: false,
+      // Ensure Lenis doesn't block native touch events
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      // Better mobile support
+      lerp: isTouchDevice ? 0.1 : 0.05, // Slightly higher lerp on mobile for smoother feel
     });
 
     setLenis(lenisInstance);

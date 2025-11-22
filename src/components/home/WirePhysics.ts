@@ -45,6 +45,10 @@ export class WirePoint {
     this.position.set(x, y, z);
     this.previousPosition.set(x, y, z);
   }
+
+  setFixed(isFixed: boolean) {
+    this.isFixed = isFixed;
+  }
 }
 
 export class WireConstraint {
@@ -90,14 +94,14 @@ export class WirePhysicsSystem {
     numPoints: number,
     startPos: Vector3,
     endPos: Vector3,
-    gravity: Vector3 = new Vector3(0, -0.6, 0), // Reduced gravity for stiffer wires
-    damping: number = 0.95, // More damping for less floppy movement
+    gravity: Vector3 = new Vector3(0, -0.08, 0), // Very minimal gravity for stiff wires
+    damping: number = 0.99, // Very high damping for quick settling
   ) {
     this.points = [];
     this.constraints = [];
     this.gravity = gravity;
     this.damping = damping;
-    this.constraintIterations = 5; // More iterations for stable collision with thick wires
+    this.constraintIterations = 12; // Many iterations for extremely stable wires
 
     // Create points along a line from start to end
     for (let i = 0; i < numPoints; i++) {
@@ -111,9 +115,9 @@ export class WirePhysicsSystem {
       this.points.push(new WirePoint(x, y, z, isFixed));
     }
 
-    // Create constraints between adjacent points with higher stiffness for less floppy wires
+    // Create constraints between adjacent points with extremely high stiffness for very stiff wires
     for (let i = 0; i < numPoints - 1; i++) {
-      this.constraints.push(new WireConstraint(this.points[i], this.points[i + 1], 0.9));
+      this.constraints.push(new WireConstraint(this.points[i], this.points[i + 1], 0.99));
     }
   }
 
@@ -130,6 +134,15 @@ export class WirePhysicsSystem {
     for (let i = 0; i < this.constraintIterations; i++) {
       for (const constraint of this.constraints) {
         constraint.solve();
+      }
+    }
+    
+    // Enforce fixed point positions (safety check to prevent drift)
+    // This ensures fixed endpoints never move from their set position
+    for (const point of this.points) {
+      if (point.isFixed) {
+        // Fixed points should not have moved, but reset velocity just in case
+        point.previousPosition.copy(point.position);
       }
     }
   }
@@ -164,6 +177,18 @@ export class WirePhysicsSystem {
       this.points[0].setPosition(startPos.x, startPos.y, startPos.z);
       this.points[this.points.length - 1].setPosition(endPos.x, endPos.y, endPos.z);
     }
+  }
+
+  setEndpointFixed(endpointIndex: 0 | -1, isFixed: boolean) {
+    const index = endpointIndex === 0 ? 0 : this.points.length - 1;
+    if (index >= 0 && index < this.points.length) {
+      this.points[index].setFixed(isFixed);
+    }
+  }
+
+  getEndpointPosition(endpointIndex: 0 | -1): Vector3 {
+    const index = endpointIndex === 0 ? 0 : this.points.length - 1;
+    return this.points[index].position.clone();
   }
 }
 
