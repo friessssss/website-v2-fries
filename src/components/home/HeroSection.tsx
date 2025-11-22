@@ -45,7 +45,7 @@ export default function HeroSection({ stats }: HeroSectionProps) {
       <FluidCursor />
       <div className="relative z-20 mx-auto flex max-w-5xl flex-col items-center gap-10 pointer-events-none">
         <div className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.75em] text-[var(--accent-muted)]">
+          <p className="text-xs uppercase font-chikoria tracking-[0.75em] !text-[var(--accent-muted)] !text-white">
             Zach Robertson
           </p>
           <h1 className="hero-name text-[clamp(3.2rem,7vw,7rem)] font-semibold uppercase leading-[0.88] tracking-tight">
@@ -55,34 +55,18 @@ export default function HeroSection({ stats }: HeroSectionProps) {
             Hardware • Software Integration Engineer
           </p>
         </div>
-        <p className="max-w-3xl text-lg text-[#d9e0cd]">
-          Building cinematic, contrast-heavy systems that keep hardware, firmware, and cloud orchestration in lockstep so
-          crews can move at race pace.
-        </p>
+
         <div className="flex flex-wrap justify-center gap-4 text-sm font-semibold uppercase tracking-[0.4em]">
-          <button
-            type="button"
-            onClick={scrollToBio}
-            className="pointer-events-auto rounded-full border border-white/20 bg-transparent px-8 py-3 text-white transition hover:border-[var(--accent-lime)] hover:text-[var(--accent-lime)]"
-          >
-            Read the bio
-          </button>
           <Link
             href="mailto:hey@zachrobertson.co"
-            className="pointer-events-auto rounded-full border border-transparent bg-[var(--accent-lime)] px-8 py-3 text-[#050805] transition hover:bg-white"
+            className="pointer-events-auto rounded-full font-chikoria border 
+            border-transparent bg-[var(--accent-lime)] px-5 py-3 !text-black transition
+             hover:bg-white hover:!text-[var(--accent-lime)] !text-lg"
           >
-            Start a build
+            Get in touch
           </Link>
         </div>
-        <div className="mt-6 flex flex-wrap justify-center gap-6 border-t border-white/10 pt-6 text-sm uppercase tracking-[0.3em] text-[#a4aa95]">
-          {stats.map((stat) => (
-            <div key={stat.label} className="flex flex-col">
-              <span className="text-4xl font-semibold text-white">{stat.value}</span>
-              <span>{stat.label}</span>
-              <span className="text-xs normal-case tracking-normal text-[#80856f]">{stat.meta}</span>
-            </div>
-          ))}
-        </div>
+        
       </div>
       <div className="pointer-events-none">
         <button

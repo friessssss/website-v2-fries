@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
+import SignalChainCanvas from './SignalChainCanvas';
 
 type BioSectionProps = {
   paragraphs: string[];
@@ -52,18 +53,16 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
         </div>
         <div
           className={clsx(
-            'rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl shadow-slate-200/40 transition-all duration-700 ease-[cubic-bezier(0.26,0.6,0.33,1)]',
+            'rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-2xl shadow-slate-200/40 transition-all duration-700 ease-[cubic-bezier(0.26,0.6,0.33,1)] overflow-hidden',
             visible ? 'translate-x-0 opacity-100' : 'translate-x-16 opacity-0',
           )}
         >
-          <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Signal chain</p>
-          <div className="mt-6 space-y-5">
-            {signals.map((signal) => (
-              <div key={signal.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-[0.4em] text-slate-500">{signal.label}</p>
-                <p className="mt-2 text-base text-slate-900">{signal.value}</p>
-              </div>
-            ))}
+          <div className="p-6 pb-4 sm:p-8 sm:pb-4">
+            <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Signal chain</p>
+            <p className="mt-2 text-xs text-slate-400">Interactive 3D • Drag the wires!</p>
+          </div>
+          <div className="h-[500px] w-full sm:h-[600px] md:h-[700px]">
+            <SignalChainCanvas />
           </div>
         </div>
       </div>
