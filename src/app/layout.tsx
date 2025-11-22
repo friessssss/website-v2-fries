@@ -1,14 +1,10 @@
 import './globals.css';
-import clsx from 'clsx';
 import type { Metadata } from 'next';
-import { Urbanist } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
 import Footer from '@/components/Footer';
 import { LenisProvider } from '@/components/LenisProvider';
-
-const urbanist = Urbanist({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Zach Robertson — Hardware & Software Integration',
@@ -30,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={clsx(urbanist.className, 'relative min-h-screen bg-[#040705] text-[#f5f8f1] antialiased')}>
+      <body className="relative min-h-screen bg-[#040705] text-[#f5f8f1] antialiased">
         <LenisProvider>
           <main className="pt-0">{children}</main>
           <Footer />

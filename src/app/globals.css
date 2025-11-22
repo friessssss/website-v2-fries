@@ -4,6 +4,55 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'New Spirit';
+  src: url('/fonts/fonnts.com-New-Spirit-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'New Spirit';
+  src: url('/fonts/fonnts.com-New-Spirit-.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'New Spirit';
+  src: url('/fonts/fonnts.com-New-Spirit-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'New Spirit';
+  src: url('/fonts/fonnts.com-New-Spirit-Semi-Bold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'New Spirit';
+  src: url('/fonts/fonnts.com-New-Spirit-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Chikoria';
+  src: url('/fonts/Chikoria-Regular.woff2') format('woff2'),
+    url('/fonts/Chikoria-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
   --page-bg: #070b05;
@@ -21,7 +70,16 @@ body {
   background: var(--page-bg);
   color: var(--page-fg);
   min-height: 100vh;
-  font-family: inherit;
+  font-family: 'New Spirit', 'Times New Roman', serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-chikoria,
+.hero-highlight {
+  color: var(--accent-lime);
+  font-family: 'Chikoria', 'New Spirit', serif;
+  letter-spacing: -0.02em;
 }
 
 .hero-field {
@@ -66,11 +124,6 @@ body {
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 160px 160px;
   opacity: 0.25;
-}
-
-.hero-highlight {
-  color: var(--accent-lime);
-  letter-spacing: -0.02em;
 }
 
 .hero-name {
