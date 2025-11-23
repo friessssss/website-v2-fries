@@ -29,43 +29,96 @@ export default function ScrollZoomContainer({
   const ZOOM_SCROLL_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 3 : 3000;
   const MIN_SCALE = 0.2;
   
-  useEffect(() => {
+    useEffect(() => {
     if (!lenis) return;
     
+    // Detect Chrome and mobile for performance optimizations
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const isChrome = !isSafari && !isTouchDevice;
+    // Use native scroll when smooth scrolling is disabled (Chrome/mobile)
+    const useNativeScroll = !isSafari || isTouchDevice;
+    
+    // Cache container top to avoid layout reads (only recalculate when needed)
+    let cachedContainerTop = containerRef.current?.offsetTop ?? 0;
+    let rafId: number | null = null;
+    let lastScrollY = 0;
+    
     const handleScroll = () => {
-      if (!containerRef.current) return;
+      // Cancel previous frame if still pending, then schedule new one - full FPS
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       
-      const scrollY = window.scrollY;
-      const containerTop = containerRef.current.offsetTop;
-      
-      // Calculate how far we've scrolled into the zoom container
-      const scrollIntoContainer = scrollY - containerTop;
-      
-      // Calculate progress (0 to 1) over the zoom scroll distance
-      const progress = Math.max(0, Math.min(scrollIntoContainer / ZOOM_SCROLL_HEIGHT, 1));
-      setScrollProgress(progress);
-      
-      // Calculate scale (1 to 0.2)
-      const scale = 1 - (progress * (1 - MIN_SCALE));
-      
-      // Apply transform to hero - keep it centered
-      if (heroWrapperRef.current) {
-        heroWrapperRef.current.style.transform = `scale(${scale})`;
+      rafId = requestAnimationFrame(() => {
+        if (!containerRef.current || !heroWrapperRef.current) {
+          rafId = null;
+          return;
+        }
+        
+        // Use native scrollY when smooth scrolling is disabled for better performance
+        const scrollY = useNativeScroll ? window.scrollY : lenis.scroll;
+        
+        // Recalculate containerTop only if we've scrolled significantly or it's 0
+        const scrollDelta = Math.abs(scrollY - lastScrollY);
+        if (scrollDelta > 200 || cachedContainerTop === 0) {
+          cachedContainerTop = containerRef.current.offsetTop;
+        }
+        
+        lastScrollY = scrollY;
+        
+        // Calculate how far we've scrolled into the zoom container
+        const scrollIntoContainer = scrollY - cachedContainerTop;
+        
+        // Calculate progress (0 to 1) over the zoom scroll distance
+        const progress = Math.max(0, Math.min(scrollIntoContainer / ZOOM_SCROLL_HEIGHT, 1));
+        
+        // Update progress - no throttling, full FPS
+        setScrollProgress(progress);
+        
+        // Calculate scale (1 to 0.2)
+        const scale = 1 - (progress * (1 - MIN_SCALE));
+        
+        // Use transform3d for GPU acceleration
+        const transformValue = `translate3d(0, 0, 0) scale3d(${scale}, ${scale}, 1)`;
+        
+        // Apply transform to hero - full FPS, no throttling
+        heroWrapperRef.current.style.willChange = 'transform';
+        heroWrapperRef.current.style.transform = transformValue;
+        heroWrapperRef.current.style.backfaceVisibility = 'hidden';
         
         // Add rounded corners as it zooms out
-        // Start adding border radius after 20% zoom progress, max at 80%
-        const borderRadiusProgress = Math.max(0, Math.min((progress), 1));
-        const borderRadius = borderRadiusProgress * 180; // Max 60px radius
+        const borderRadiusProgress = Math.max(0, Math.min(progress, 1));
+        const borderRadius = borderRadiusProgress * 180;
         heroWrapperRef.current.style.borderRadius = `${borderRadius}px`;
-      }
+        
+        rafId = null;
+      });
     };
     
-    lenis.on('scroll', handleScroll);
-    handleScroll(); // Initial call
-    
-    return () => {
-      lenis.off('scroll', handleScroll);
-    };
+    // Use native scroll listener when smooth scrolling is disabled for better performance
+    if (useNativeScroll) {
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      handleScroll(); // Initial call
+      
+      return () => {
+        window.removeEventListener('scroll', handleScroll);
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+      };
+    } else {
+      // Use Lenis scroll event when smooth scrolling is enabled (Safari)
+      lenis.on('scroll', handleScroll);
+      handleScroll(); // Initial call
+      
+      return () => {
+        lenis.off('scroll', handleScroll);
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+      };
+    }
   }, [lenis, ZOOM_SCROLL_HEIGHT]);
   
   // Calculate horizontal text position
@@ -94,18 +147,24 @@ export default function ScrollZoomContainer({
             visibility: scrollProgress >= 1 ? 'hidden' : 'visible'
           }}
         >
-          {horizontalTexts.map((text, index) => (
-            <div
-              key={index}
-              className="whitespace-nowrap text-[clamp(2rem,5vw,4rem)] font-bold uppercase tracking-wider text-slate-900"
-              style={{
-                transform: `translateX(${getTextOffset(index)}%)`,
-                textShadow: '0 2px 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(255, 255, 255, 0.5)'
-              }}
-            >
-              {text}
-            </div>
-          ))}
+          {horizontalTexts.map((text, index) => {
+            const offset = getTextOffset(index);
+            
+            return (
+              <div
+                key={index}
+                className="whitespace-nowrap text-[clamp(2rem,5vw,4rem)] font-bold uppercase tracking-wider text-slate-900"
+                style={{
+                  transform: `translate3d(${offset}%, 0, 0)`,
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
+                  textShadow: '0 2px 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(255, 255, 255, 0.5)'
+                }}
+              >
+                {text}
+              </div>
+            );
+          })}
         </div>
         
         {/* Fixed hero that zooms out from center - WITH green background */}

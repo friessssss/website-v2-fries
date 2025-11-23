@@ -19,184 +19,132 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const headingsRef = useRef<HTMLHeadingElement[]>([]);
   const lenis = useLenisScroll();
-  const lastScrollTimeRef = useRef(0);
 
   useEffect(() => {
-    if (!sectionRef.current || !contentRef.current || !lenis) return;
+    if (!sectionRef.current || !contentRef.current) return;
 
-    // Detect mobile/touch device
+    // Detect Safari - use Lenis integration for Safari, native scroll for Chrome/mobile
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const useLenisIntegration = isSafari && !isTouchDevice && lenis;
 
-    // Integrate Lenis with ScrollTrigger
-    lenis.on('scroll', ScrollTrigger.update);
-
-    // Magnetic snap effect - continuous pull when in range
-    let magneticRaf: number | null = null;
-    let isUserScrolling = false;
-    let scrollStopTimeout: NodeJS.Timeout | null = null;
-
-    const handleScroll = () => {
-      isUserScrolling = true;
-      lastScrollTimeRef.current = Date.now();
-      
-      // Reset scroll stop detection
-      if (scrollStopTimeout) clearTimeout(scrollStopTimeout);
-      scrollStopTimeout = setTimeout(() => {
-        isUserScrolling = false;
-      }, 150);
+    // Update ScrollTrigger - use native scroll for Chrome/mobile, Lenis for Safari
+    const updateScrollTrigger = () => {
+      ScrollTrigger.update();
     };
 
-    lenis.on('scroll', handleScroll);
+    let scrollUpdateRaf: number | null = null;
+    const handleScroll = () => {
+      // No throttling - update immediately
+      if (scrollUpdateRaf !== null) {
+        cancelAnimationFrame(scrollUpdateRaf);
+      }
+      scrollUpdateRaf = requestAnimationFrame(() => {
+        updateScrollTrigger();
+        scrollUpdateRaf = null;
+      });
+    };
+
+    // Use native scroll for Chrome/mobile, Lenis for Safari
+    if (useLenisIntegration) {
+      lenis.on('scroll', handleScroll);
+    } else {
+      window.addEventListener('scroll', handleScroll, { passive: true });
+    }
+
+    ScrollTrigger.config({
+      autoRefreshEvents: 'visibilitychange,DOMContentLoaded,load',
+      ignoreMobileResize: true,
+    });
 
     const ctx = gsap.context(() => {
-      // Set initial hidden state - no scale to avoid jumpiness
+      if (contentRef.current) {
+        contentRef.current.style.willChange = 'transform, opacity';
+        contentRef.current.style.backfaceVisibility = 'hidden';
+        contentRef.current.style.transform = 'translateZ(0)';
+      }
+
+      headingsRef.current.forEach((heading) => {
+        if (heading) {
+          heading.style.willChange = 'transform, opacity';
+          heading.style.backfaceVisibility = 'hidden';
+          heading.style.transform = 'translateZ(0)';
+        }
+      });
+
       gsap.set(contentRef.current, {
         opacity: 0,
         y: 80,
+        force3D: true,
       });
 
       gsap.set(headingsRef.current, {
         opacity: 0,
         y: 30,
+        force3D: true,
       });
 
-      // Magnetic snap trigger zone - continuous pull effect
-      const magneticTrigger = ScrollTrigger.create({
-        trigger: sectionRef.current,
-        start: 'top 90%',
-        end: 'bottom 10%',
-        onUpdate: () => {
-          if (isUserScrolling) {
-            if (magneticRaf) {
-              cancelAnimationFrame(magneticRaf);
-              magneticRaf = null;
-            }
-            return;
-          }
-          
-          const sectionTop = sectionRef.current!.getBoundingClientRect().top;
-          const viewportCenter = window.innerHeight / 2;
-          const distanceFromCenter = sectionTop - viewportCenter;
-          const maxDistance = window.innerHeight * 0.25; // Magnetic field extends 25% of viewport
-          
-          // Only apply magnetic pull if within range and user has stopped scrolling
-          // On mobile, use longer delay and weaker strength to avoid interfering with touch scrolling
-          const scrollDelay = isTouchDevice ? 600 : 400;
-          const timeSinceScroll = Date.now() - lastScrollTimeRef.current;
-          if (Math.abs(distanceFromCenter) < maxDistance && timeSinceScroll > scrollDelay) {
-            // Calculate magnetic strength (stronger when closer to center, weaker at edges)
-            // Reduce strength on mobile to avoid interfering with touch scrolling
-            const baseStrength = isTouchDevice ? 0.06 : 0.12;
-            const normalizedDistance = Math.abs(distanceFromCenter) / maxDistance;
-            const magneticStrength = Math.pow(1 - normalizedDistance, 2) * baseStrength;
-            
-            // Apply gradual magnetic pull using requestAnimationFrame for smoothness
-            if (!magneticRaf) {
-              const applyMagneticPull = () => {
-                if (isUserScrolling) {
-                  magneticRaf = null;
-                  return;
-                }
-                
-                const currentSectionTop = sectionRef.current!.getBoundingClientRect().top;
-                const currentDistance = currentSectionTop - viewportCenter;
-                
-                if (Math.abs(currentDistance) > 5) { // Only adjust if more than 5px away
-                  const pullAmount = -currentDistance * magneticStrength * 0.1; // Gradual pull
-                  lenis.scrollTo(lenis.scroll + pullAmount, {
-                    duration: 0.1,
-                    easing: (t) => t, // Linear for smooth continuous pull
-                    immediate: false,
-                  });
-                  
-                  magneticRaf = requestAnimationFrame(applyMagneticPull);
-                } else {
-                  magneticRaf = null;
-                }
-              };
-              
-              magneticRaf = requestAnimationFrame(applyMagneticPull);
-            }
-          } else {
-            // Stop magnetic pull when out of range
-            if (magneticRaf) {
-              cancelAnimationFrame(magneticRaf);
-              magneticRaf = null;
-            }
-          }
-        },
-        onLeave: () => {
-          if (magneticRaf) {
-            cancelAnimationFrame(magneticRaf);
-            magneticRaf = null;
-          }
-        },
-        onLeaveBack: () => {
-          if (magneticRaf) {
-            cancelAnimationFrame(magneticRaf);
-            magneticRaf = null;
-          }
-        },
-      });
-
-      // Smooth entrance animation - no conflicting transforms
       const entranceTL = gsap.timeline({
         scrollTrigger: {
           trigger: sectionRef.current,
-          start: 'top 40%',
-          end: 'top 5%',
+          start: 'top 75%',
+          end: 'top 25%',
           toggleActions: 'play none none reverse',
+          markers: false,
+          refreshPriority: -1,
         },
       });
 
-      // Animate container smoothly
       entranceTL.to(contentRef.current, {
         opacity: 1,
         y: 0,
-        duration: 1.2,
+        duration: 0.8,
         ease: 'power2.out',
+        force3D: true,
       });
 
-      // Stagger animate headings smoothly - no scale or rotation to avoid jumpiness
       entranceTL.to(
         headingsRef.current,
         {
           opacity: 1,
           y: 0,
-          duration: 0.9,
-          stagger: {
-            amount: 0.5,
-            from: 'start',
-          },
+          duration: 0.6,
+          stagger: 0.15,
           ease: 'power2.out',
+          force3D: true,
+          onComplete: () => {
+            if (contentRef.current) {
+              contentRef.current.style.willChange = 'auto';
+            }
+            headingsRef.current.forEach((heading) => {
+              if (heading) {
+                heading.style.willChange = 'auto';
+              }
+            });
+          },
         },
-        '-=0.8',
+        '-=0.4',
       );
-
-      // Subtle glow effect when section is active
-      const glowTL = gsap.timeline({
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: 'top 50%',
-          end: 'top 25%',
-          toggleActions: 'play none none reverse',
-        },
-      });
-
-      glowTL.to(headingsRef.current, {
-        filter: 'drop-shadow(0 0 15px rgba(16, 185, 129, 0.25))',
-        duration: 1.0,
-        stagger: 0.08,
-        ease: 'power1.out',
-      });
     });
 
     return () => {
       ctx.revert();
-      lenis.off('scroll', ScrollTrigger.update);
-      lenis.off('scroll', handleScroll);
-      if (scrollStopTimeout) clearTimeout(scrollStopTimeout);
-      if (magneticRaf) cancelAnimationFrame(magneticRaf);
+      if (useLenisIntegration) {
+        lenis.off('scroll', handleScroll);
+      } else {
+        window.removeEventListener('scroll', handleScroll);
+      }
+      if (scrollUpdateRaf) cancelAnimationFrame(scrollUpdateRaf);
+      const content = contentRef.current;
+      const headings = headingsRef.current;
+      if (content) {
+        content.style.willChange = 'auto';
+      }
+      headings.forEach((heading) => {
+        if (heading) {
+          heading.style.willChange = 'auto';
+        }
+      });
     };
   }, [lenis]);
 
@@ -205,12 +153,20 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
       ref={sectionRef}
       id="bio"
       className="relative isolate overflow-hidden bg-transparent px-6 py-24 text-slate-900"
+      style={{ scrollBehavior: 'auto' }}
     >
       
       <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center">
         <div
           ref={contentRef}
-          className="flex flex-col items-center justify-center space-y-6 text-center rounded-3xl bg-white/40 p-8 backdrop-blur-sm"
+          className="flex flex-col items-center justify-center space-y-6 text-center rounded-3xl bg-white/50 p-8"
+          style={{
+            transform: 'translateZ(0)',
+            backfaceVisibility: 'hidden',
+            perspective: '1000px',
+            contain: 'layout style paint',
+            contentVisibility: 'auto',
+          }}
         >
           <h2 
             ref={(el) => { if (el) headingsRef.current[0] = el; }}

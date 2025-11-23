@@ -20,17 +20,22 @@ export function LenisProvider({ children }: LenisProviderProps) {
   useEffect(() => {
     // Detect if device is mobile/touch
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // Detect Safari - it handles smooth scrolling better
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isChrome = !isSafari && !isTouchDevice;
+    
+    // Disable smooth scrolling on Chrome and mobile for better performance
+    const shouldSmoothScroll = isSafari && !isTouchDevice;
     
     const lenisInstance = new Lenis({
-      duration: isTouchDevice ? 1.0 : 1.25, // Faster on mobile for better responsiveness
-      smoothWheel: true,
-      touchMultiplier: isTouchDevice ? 2.5 : 2, // Higher multiplier for mobile
+      duration: shouldSmoothScroll ? 1.25 : 1.0,
+      smoothWheel: shouldSmoothScroll, // Disable on Chrome and mobile
+      touchMultiplier: isTouchDevice ? 2.5 : 2,
       easing: (t) => Math.min(1, 1 - Math.pow(1 - t, 3)),
       wheelMultiplier: 1,
       infinite: false,
       orientation: 'vertical',
-      // Better mobile support
-      lerp: isTouchDevice ? 0.1 : 0.05, // Slightly higher lerp on mobile for smoother feel
+      lerp: shouldSmoothScroll ? 0.05 : 0.1, // Higher lerp when smooth scrolling is disabled
     });
 
     setLenis(lenisInstance);
