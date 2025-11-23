@@ -5,7 +5,6 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useLenisScroll } from '@/components/LenisProvider';
 import SignalChainCanvas from './SignalChainCanvas';
-import TopographicBackground from './TopographicBackground';
 
 // Register GSAP plugins
 gsap.registerPlugin(ScrollTrigger);
@@ -205,15 +204,13 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
     <section
       ref={sectionRef}
       id="bio"
-      className="relative isolate overflow-hidden bg-white px-6 py-24 text-slate-900"
+      className="relative isolate overflow-hidden bg-transparent px-6 py-24 text-slate-900"
     >
-      {/* Topographic background */}
-      <TopographicBackground />
       
       <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center">
         <div
           ref={contentRef}
-          className="flex flex-col items-center justify-center space-y-6 text-center"
+          className="flex flex-col items-center justify-center space-y-6 text-center rounded-3xl bg-white/40 p-8 backdrop-blur-sm"
         >
           <h2 
             ref={(el) => { if (el) headingsRef.current[0] = el; }}

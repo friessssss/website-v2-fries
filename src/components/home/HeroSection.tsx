@@ -40,7 +40,7 @@ export default function HeroSection({ stats }: HeroSectionProps) {
   return (
     <section
       id="hero"
-      className="hero-field relative isolate flex min-h-screen items-center justify-center overflow-hidden px-6 py-20 text-center text-[#f5f8f1]"
+      className="hero-field relative isolate flex min-h-screen items-center justify-center overflow-hidden px-6 py-20 text-center text-[#f5f8f1] bg-[#040705]"
     >
       <FluidCursor />
       <div className="relative z-20 mx-auto flex max-w-5xl flex-col items-center gap-10 pointer-events-none">
