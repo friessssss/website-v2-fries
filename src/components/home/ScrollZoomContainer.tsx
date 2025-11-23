@@ -54,8 +54,8 @@ export default function ScrollZoomContainer({
         
         // Add rounded corners as it zooms out
         // Start adding border radius after 20% zoom progress, max at 80%
-        const borderRadiusProgress = Math.max(0, Math.min((progress - 0.2) / 0.6, 1));
-        const borderRadius = borderRadiusProgress * 60; // Max 60px radius
+        const borderRadiusProgress = Math.max(0, Math.min((progress), 1));
+        const borderRadius = borderRadiusProgress * 180; // Max 60px radius
         heroWrapperRef.current.style.borderRadius = `${borderRadius}px`;
       }
     };

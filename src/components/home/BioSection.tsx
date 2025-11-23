@@ -63,8 +63,8 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
       // Magnetic snap trigger zone - continuous pull effect
       const magneticTrigger = ScrollTrigger.create({
         trigger: sectionRef.current,
-        start: 'top 80%',
-        end: 'bottom 20%',
+        start: 'top 90%',
+        end: 'bottom 10%',
         onUpdate: () => {
           if (isUserScrolling) {
             if (magneticRaf) {
@@ -143,8 +143,8 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
       const entranceTL = gsap.timeline({
         scrollTrigger: {
           trigger: sectionRef.current,
-          start: 'top 75%',
-          end: 'top 25%',
+          start: 'top 40%',
+          end: 'top 5%',
           toggleActions: 'play none none reverse',
         },
       });
@@ -177,8 +177,8 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
       const glowTL = gsap.timeline({
         scrollTrigger: {
           trigger: sectionRef.current,
-          start: 'top 65%',
-          end: 'top 35%',
+          start: 'top 50%',
+          end: 'top 25%',
           toggleActions: 'play none none reverse',
         },
       });
