@@ -159,3 +159,46 @@ body {
   background-color: rgba(195, 255, 65, 0.35);
   color: #050a04;
 }
+
+/* Animated Button Text Styles */
+.animated-button-text {
+  display: inline-block;
+}
+
+.animated-letter {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  height: 1.2em;
+  line-height: 1.2em;
+}
+
+.animated-letter-space {
+  overflow: visible;
+  width: 0.25em;
+}
+
+.animated-letter-inner {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(0);
+  transition-delay: var(--letter-delay, 0s);
+}
+
+.animated-letter-duplicate,
+.animated-letter-original {
+  display: inline-block;
+  height: 1.2em;
+  line-height: 1.2em;
+}
+
+.animated-letter-duplicate {
+  order: -1;
+}
+
+/* Hover effect - scroll up */
+.group:hover .animated-button-text .animated-letter-inner,
+.animated-button-text:hover .animated-letter-inner {
+  transform: translateY(-1.2em);
+}

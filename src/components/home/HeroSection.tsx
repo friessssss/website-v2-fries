@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PiCarBold } from 'react-icons/pi';
 
+import AnimatedButtonText from '@/components/AnimatedButtonText';
 import FluidCursor from '@/components/FluidCursor';
 import { useLenisScroll } from '@/components/LenisProvider';
 
@@ -58,12 +59,13 @@ export default function HeroSection({ stats }: HeroSectionProps) {
 
         <div className="flex flex-wrap justify-center gap-4 text-sm font-semibold uppercase tracking-[0.4em]">
           <Link
-            href="mailto:hey@zachrobertson.co"
-            className="pointer-events-auto rounded-full font-chikoria border 
+            href="mailto:zach@zachrobertson.co"
+            className="group pointer-events-auto rounded-md tracking-wide border 
             border-transparent bg-[var(--accent-lime)] px-5 py-3 !text-black transition
-             hover:bg-white hover:!text-[var(--accent-lime)] !text-lg"
+            !text-2xl
+             hover:bg-muted hover:!text-emerald-900"
           >
-            Get in touch
+            <AnimatedButtonText >Get  in  touch</AnimatedButtonText>
           </Link>
         </div>
         
