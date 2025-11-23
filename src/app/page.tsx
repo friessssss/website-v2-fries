@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import BioSectionBlock from '@/components/home/BioSection';
 import HeroSection from '@/components/home/HeroSection';
+import ScrollZoomContainer from '@/components/home/ScrollZoomContainer';
 import TopographicBackground from '@/components/home/TopographicBackground';
 import {
   bioParagraphs,
@@ -13,15 +14,21 @@ import {
 
 export default function Page() {
   return (
-    <>
+    <div className="relative">
       <div className="fixed inset-0 bg-white -z-20" />
       <TopographicBackground />
-      <HeroSection stats={heroStats} />
-      <BioSectionBlock paragraphs={bioParagraphs} signals={bioSignals} />
-      <SystemsSection />
-      <ProjectsSection />
-      <LabCallout />
-    </>
+      <ScrollZoomContainer
+        hero={<HeroSection stats={heroStats} />}
+        content={
+          <>
+            <BioSectionBlock paragraphs={bioParagraphs} signals={bioSignals} />
+            <SystemsSection />
+            <ProjectsSection />
+            <LabCallout />
+          </>
+        }
+      />
+    </div>
   );
 }
 

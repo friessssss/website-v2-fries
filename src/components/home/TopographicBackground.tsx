@@ -119,7 +119,7 @@ function TopographicMap() {
 
 export default function TopographicBackground() {
   return (
-    <div className="fixed inset-0 -z-10 opacity-20 pointer-events-none mix-blend-multiply">
+    <div className="fixed inset-0 -z-10 opacity-30 pointer-events-none mix-blend-multiply">
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
         gl={{ alpha: true, antialias: true }}
