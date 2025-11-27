@@ -168,7 +168,7 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
             contentVisibility: 'auto',
           }}
         >
-          <h2 
+          {/* <h2 
             ref={(el) => { if (el) headingsRef.current[0] = el; }}
             className="text-5xl"
           >
@@ -187,7 +187,33 @@ export default function BioSection({ paragraphs, signals }: BioSectionProps) {
             className="text-5xl"
           >
             Defining a new era of <span className="!text-emerald-700 font-chikoria font-bold">electric adventure</span>.
+          </h2> */}
+
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[0] = el; }}
+            className="text-5xl"
+          >
+            Taming <span className="!text-emerald-700 font-chikoria font-bold">chaos</span>, 
+            tuning <span className="!text-emerald-700 font-chikoria font-bold">code</span>,
+             and chasing <span className="!text-emerald-700 font-chikoria font-bold">clarity</span> in every connection.
           </h2>
+
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[1] = el; }}
+            className="text-5xl"
+          > 
+            Blending <span className="!text-emerald-700 font-chikoria font-bold">hardware </span>  
+            and <span className="!text-emerald-700 font-chikoria font-bold">software</span> into something 
+            that <span className="!text-emerald-700 font-chikoria font-bold">works</span>.
+          </h2>
+
+          <h2 
+            ref={(el) => { if (el) headingsRef.current[2] = el; }}
+            className="text-5xl"
+          >
+            Defining a new era of <span className="!text-emerald-700 font-chikoria font-bold">electric adventure</span>.
+          </h2> 
+
         </div>
         {/* <div
           className={clsx(

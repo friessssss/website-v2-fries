@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { FaGithub } from 'react-icons/fa';
 
 import BioSectionBlock from '@/components/home/BioSection';
 import HeroSection from '@/components/home/HeroSection';
 import ScrollZoomContainer from '@/components/home/ScrollZoomContainer';
 import TopographicBackground from '@/components/home/TopographicBackground';
+import AnimatedButtonText from '@/components/AnimatedButtonText';
 import {
   bioParagraphs,
   bioSignals,
@@ -79,10 +81,9 @@ function ProjectsSection() {
       <div className="mx-auto max-w-6xl space-y-12">
         <div className="flex flex-col gap-3">
           <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Selected work</p>
-          <h2 className="text-4xl font-semibold text-slate-900 sm:text-5xl">Recent labs, launches, and rituals.</h2>
+          <h2 className="text-4xl font-semibold text-slate-900 sm:text-5xl">Recent Projects & Fixations</h2>
           <p className="max-w-3xl text-sm text-slate-600">
-            A sampling of the environments and artifacts I build—each one blends tactile hardware, resilient software, and
-            brave teams.
+            A sampling of the projects that pique my interest, and inefficiencies that I&apos;m fixing.
           </p>
         </div>
         <div className="grid gap-6">
@@ -99,12 +100,25 @@ function ProjectsSection() {
               <p className="text-sm font-semibold uppercase tracking-[0.4em] text-emerald-600">
                 Outcome: {project.result}
               </p>
-              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                {project.stack.map((tech) => (
-                  <span key={tech} className="rounded-full border border-slate-200 px-3 py-1 text-slate-600">
-                    {tech}
-                  </span>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-2">
+                  {project.stack.map((tech) => (
+                    <span key={tech} className="rounded-full border border-slate-200 px-3 py-1 text-slate-600">
+                      <AnimatedButtonText>{tech}</AnimatedButtonText>
+                    </span>
+                  ))}
+                </div>
+                {project.github && (
+                  <Link
+                    href={project.github}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                    aria-label="View on GitHub"
+                  >
+                    <FaGithub className="h-4 w-4" />
+                  </Link>
+                )}
               </div>
             </article>
           ))}
@@ -118,26 +132,26 @@ function LabCallout() {
   return (
     <section className="relative isolate px-6 pb-28">
       <div className="mx-auto max-w-6xl rounded-3xl border border-slate-200 bg-white/80 p-10 text-center shadow-xl shadow-slate-200/40 backdrop-blur-sm">
-        <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Next build</p>
-        <h2 className="mt-4 text-4xl font-semibold text-slate-900">Need an integration layer that behaves like a product?</h2>
+        <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Get in touch</p>
+        <h2 className="mt-4 text-4xl font-semibold text-slate-900">Got a system that won’t behave?</h2>
         <p className="mt-4 text-base text-slate-600">
-          I love helping teams turn messy prototypes into confident launches. Lenis drives the story, contrast keeps it
-          legible, and the hardware finally has a voice.
+        I’ve debugged worse.
+        Let’s experiment, iterate, and get it back on the road.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm font-semibold uppercase tracking-[0.35em]">
           <Link
-            href="mailto:hey@zachrobertson.co"
-            className="rounded-full border border-slate-200 bg-slate-50 px-8 py-3 text-slate-900 transition hover:border-slate-300 hover:bg-slate-100"
+            href="mailto:zach@zachrobertson.co"
+            className="rounded-xl border border-slate-200 bg-slate-50 px-8 py-3 text-slate-900 transition hover:border-slate-300 hover:bg-slate-100"
           >
-            Email Zach
+            <AnimatedButtonText>Email Zach</AnimatedButtonText>
           </Link>
           <Link
-            href="https://www.linkedin.com/in/zrobertson"
+            href="https://www.linkedin.com/in/zach-robertson"
             target="_blank"
             rel="noreferrer"
-            className="rounded-full border border-transparent bg-emerald-500/80 px-8 py-3 text-white transition hover:bg-emerald-600"
+            className="rounded-xl border border-transparent bg-emerald-700/80 px-8 py-3 text-white transition hover:bg-emerald-700"
           >
-            Connect on LinkedIn
+            <AnimatedButtonText>Connect on LinkedIn</AnimatedButtonText>
           </Link>
         </div>
       </div>

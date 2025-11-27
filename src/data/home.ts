@@ -40,20 +40,22 @@ export const systemPillars = [
 
 export const projectDeck = [
   {
-    title: 'Analog-to-Cloud Lab',
-    timeframe: '2024',
+    title: 'QCAN Explorer',
+    timeframe: '2025',
     summary:
-      'Lead a cross-disciplinary push to build a hardware-in-the-loop lab that streams sensor data, runs regression suites, and syncs results with ops dashboards.',
-    result: 'Cut validation cycles from days to hours.',
-    stack: ['Rust', 'Next.js', 'MongoDB', 'WebSockets'],
+      'Wrote a bootleg version of PCAN Explorer that works on Windows, macOS, and Linux. Worked to make the SW backwards compatible with PCAN Explorer, but with some small improvements in areas, and open sourced for the community.',
+    result: 'Free open sourced CAN bus analyzer for the community.',
+    stack: ['Python', 'PyQt6','CAN',],
+    github: 'https://github.com/friessssss/QCAN-Explorer',
   },
   {
-    title: 'Immersive Race Control',
-    timeframe: '2023',
+    title: 'Rocket League Song Analytics',
+    timeframe: '2025',
     summary:
-      'Designed and shipped a contrasty telemetry wall for a motorsport team with non-linear scrolling narratives, motion cues, and real-time Spotify-linked rituals.',
-    result: 'Operators gained millisecond awareness of car, crew, and hype.',
-    stack: ['Three.js', 'GSAP', 'Tailwind', 'Vercel Edge'],
+      'Every year, my friends and I track what Christmas songs bring the most goals scored while listening to music on Spotify. Up until now, this was done via hunting thru an excel spreadsheet and manually entering the data. I decided to automate the process, and now we can see the data in a more visual way.',
+    result: 'Semi-automated song analytics for best Rocket League songs.',
+    stack: ['MongoDB', 'Spotify API', 'Automation'],
+    github: 'https://zachrobertson.co/analytics',
   },
   {
     title: 'Field Sensor Kit',
