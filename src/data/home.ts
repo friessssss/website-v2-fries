@@ -43,7 +43,7 @@ export const projectDeck = [
 export const workHistory = [
   {
     year: '2024 - Present',
-    title: 'Hardware and Software Integration Engineer',
+    title: 'Hardware Software Integration Engineer',
     company: 'Lightship',
     description: 'Developed complete diagnostic tooling for Lightship\'s fleet of vehicles. Included a custom Linux kernel, CAN bus drivers, and a web-based diagnostic interface. Learned Ins and Outs of the complete vehicle stack in order to effective troubleshoot and repair vehicles.',
     technologies: ['Python', 'Linux Development', 'CAN', 'Diagnostics', 'Jack of all trades'],
