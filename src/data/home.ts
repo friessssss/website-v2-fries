@@ -17,26 +17,7 @@ export const bioSignals = [
   { label: 'Stack', value: 'Rust, TypeScript, Next.js, embedded C, Edge KV, Unreal, Mongo.' },
 ];
 
-export const systemPillars = [
-  {
-    title: 'Edge-to-cloud command planes',
-    description:
-      'Bidirectional control layers that keep firmware, field devices, and operator dashboards synchronized with full observability.',
-    artifacts: ['Rust services', 'WebRTC streams', 'Design tokens'],
-  },
-  {
-    title: 'Immersive telemetry surfaces',
-    description:
-      'High-contrast, cinematic UIs that help teams read biometrics, timing, and hardware health in milliseconds.',
-    artifacts: ['Three.js visualizers', 'Realtime widgets', 'Canvas pipelines'],
-  },
-  {
-    title: 'Field-ready prototyping loops',
-    description:
-      'Hardware test rigs, fixtures, and rapid firmware updates tightly integrated with product analytics.',
-    artifacts: ['HIL Labs', 'Fixture control', 'Autonomous QA'],
-  },
-];
+
 
 export const projectDeck = [
   {
@@ -57,31 +38,40 @@ export const projectDeck = [
     stack: ['MongoDB', 'Spotify API', 'Automation'],
     github: 'https://zachrobertson.co/analytics',
   },
+];
+
+export const workHistory = [
   {
-    title: 'Field Sensor Kit',
-    timeframe: '2022',
-    summary:
-      'Engineered modular sensor packs plus the firmware + cloud bridge so crews could stand up new experiences in minutes.',
-    result: 'Deployed to 40+ interactive retail sites worldwide.',
-    stack: ['Embedded C', 'TypeScript', 'AWS IoT', 'Figma tokens'],
+    year: '2024 - Present',
+    title: 'Hardware and Software Integration Engineer',
+    company: 'Lightship',
+    description: 'Developed complete diagnostic tooling for Lightship\'s fleet of vehicles. Included a custom Linux kernel, CAN bus drivers, and a web-based diagnostic interface. Learned Ins and Outs of the complete vehicle stack in order to effective troubleshoot and repair vehicles.',
+    technologies: ['Python', 'Linux Development', 'CAN', 'Diagnostics', 'Jack of all trades'],
+  },
+  {
+    year: '2022 - 2024',
+    title: 'Group Engineer',
+    company: 'Schaeffler Group',
+    description: 'Developed control algorithims for steer by wire and force feedback systems. Wrote system requirements and specifications for Battery Management System to expand into new markets.',
+    technologies: ['MATLab', 'Swift', 'CAN', 'On-Road Testing', 'System Requirements'],
   },
 ];
 
 export const contactLinks = [
   {
     label: 'Email',
-    href: 'mailto:hey@zachrobertson.co',
-    description: 'Preferred for new collaborations and quick intros.',
+    href: 'mailto:zach@zachrobertson.co',
+    description: 'For quick intros!',
   },
   {
     label: 'LinkedIn',
-    href: 'https://www.linkedin.com/in/zrobertson',
-    description: 'Longer form history and role breakdowns.',
+    href: 'https://www.linkedin.com/in/zach-robertson',
+    description: 'Connect with me!',
   },
   {
     label: 'GitHub',
-    href: 'https://github.com/zrobertson',
-    description: 'Selected experiments and supporting libraries.',
+    href: 'https://github.com/friessssss',
+    description: 'Some assorted projects.',
   },
 ];
 

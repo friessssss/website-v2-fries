@@ -79,7 +79,7 @@ export default function AsciiDitherBackground() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 h-full w-full opacity-70 mix-blend-screen"
+      className="fixed inset-0 h-full w-full opacity-70 mix-blend-screen"
       aria-hidden="true"
     />
   );

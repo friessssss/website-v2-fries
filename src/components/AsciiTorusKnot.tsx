@@ -338,7 +338,7 @@ export default function AsciiTorusKnot() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 h-full w-full pointer-events-none"
+      className="fixed inset-0 h-full w-full pointer-events-none"
       style={{ zIndex: 10 }}
       aria-hidden="true"
     />
