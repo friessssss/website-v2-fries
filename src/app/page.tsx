@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import AsciiDitherBackground from '@/components/AsciiDitherBackground';
@@ -9,6 +10,16 @@ import ContactSection from '@/components/ContactSection';
 
 export default function Page() {
   const scrollY = useScrollAnimation();
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Calculate opacity and transform based on scroll
   // Start fading at 50px, fully faded at 250px (quicker animation)
@@ -17,6 +28,7 @@ export default function Page() {
   const scrollProgress = Math.min(1, Math.max(0, (scrollY - fadeStart) / (fadeEnd - fadeStart)));
   const opacity = 1 - scrollProgress;
   const translateY = scrollProgress * -50; // Move up 50px as we scroll
+  const scale = isMobile ? 0.4 : 1;
 
   return (
     <div className="relative">
@@ -24,12 +36,13 @@ export default function Page() {
       <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
         <AsciiDitherBackground />
         <div
-          className="fixed inset-0 pointer-events-none hidden md:block"
+          className="fixed inset-0 pointer-events-none"
           style={{
             opacity,
-            transform: `translateY(${translateY}px)`,
+            transform: `translateY(${translateY}px) scale(${scale})`,
             transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
             zIndex: 10,
+            transformOrigin: 'center center',
           }}
         >
           <AsciiTorusKnot />
