@@ -51,16 +51,21 @@ export default function AsciiTorusKnot() {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    camera.position.z = 8;
+    // Move camera further back on mobile to make model appear smaller
+    const isMobile = width < 768;
+    camera.position.z = isMobile ? 12 : 8;
 
     // Create torus knot geometry
+    // Scale down geometry on mobile
+    const radius = isMobile ? 0.8 : 1.5;
+    const tube = isMobile ? 0.2 : 0.4;
     const geometry = new THREE.TorusKnotGeometry(
-      1.5,  // radius (50% smaller)
-      0.4,  // tube thickness (proportionally scaled)
-      150,  // tubular segments
-      20,   // radial segments
-      2,    // p parameter
-      3     // q parameter
+      radius,  // radius (smaller on mobile)
+      tube,   // tube thickness (smaller on mobile)
+      150,    // tubular segments
+      20,     // radial segments
+      2,      // p parameter
+      3       // q parameter
     );
 
     // Use MeshNormalMaterial for automatic shading based on surface normals
@@ -101,6 +106,9 @@ export default function AsciiTorusKnot() {
       // Update renderer size
       renderer.setSize(width, height, false);
       
+      // Adjust camera position based on screen size
+      const isMobile = width < 768;
+      camera.position.z = isMobile ? 12 : 8;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
 
