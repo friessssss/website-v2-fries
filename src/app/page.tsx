@@ -1,160 +1,40 @@
 import Link from 'next/link';
-import { FaGithub } from 'react-icons/fa';
-
-import BioSectionBlock from '@/components/home/BioSection';
-import HeroSection from '@/components/home/HeroSection';
-import ScrollZoomContainer from '@/components/home/ScrollZoomContainer';
-import TopographicBackground from '@/components/home/TopographicBackground';
-import AnimatedButtonText from '@/components/AnimatedButtonText';
-import {
-  bioParagraphs,
-  bioSignals,
-  heroStats,
-  projectDeck,
-  systemPillars,
-} from '@/data/home';
+import AsciiDitherBackground from '@/components/AsciiDitherBackground';
+import AsciiTorusKnot from '@/components/AsciiTorusKnot';
 
 export default function Page() {
   return (
-    <div className="relative">
-      <div className="fixed inset-0 bg-white -z-20" />
-      <TopographicBackground />
-      <ScrollZoomContainer
-        hero={<HeroSection stats={heroStats} />}
-        content={
-          <>
-            <BioSectionBlock paragraphs={bioParagraphs} signals={bioSignals} />
-            <SystemsSection />
-            <ProjectsSection />
-            <LabCallout />
-          </>
-        }
-      />
-    </div>
-  );
-}
-
-function SystemsSection() {
-  return (
-    <section id="systems" className="relative isolate px-6 py-28">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Systems</p>
-            <h2 className="mt-3 text-4xl font-semibold text-slate-900 sm:text-5xl">
-              Where I plug in.
-            </h2>
-          </div>
-          <p className="max-w-lg text-sm text-slate-600">
-            Hardware to cloud, concept to operator view. I architect the connective tissue so every layer stays in tune.
-          </p>
-        </div>
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {systemPillars.map((pillar) => (
-            <div
-              key={pillar.title}
-              className="rounded-3xl border border-slate-200 bg-white/50 p-6 shadow-xl shadow-slate-200/40 backdrop-blur-sm"
-            >
-              <h3 className="text-xl font-semibold text-slate-900">{pillar.title}</h3>
-              <p className="mt-3 text-sm text-slate-600">{pillar.description}</p>
-              <div className="mt-6 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700/80">
-                {pillar.artifacts.map((artifact) => (
-                  <span
-                    key={artifact}
-                    className="rounded-full border border-emerald-200/30 bg-emerald-50/50 px-3 py-1 text-emerald-800/70"
-                  >
-                    {artifact}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
+      <div className="max-w-4xl mx-auto text-center space-y-8">
+        <AsciiDitherBackground />
+        <AsciiTorusKnot />
       </div>
-    </section>
-  );
-}
-
-function ProjectsSection() {
-  return (
-    <section id="work" className="relative isolate px-6 py-28">
-      <div className="mx-auto max-w-6xl space-y-12">
-        <div className="flex flex-col gap-3">
-          <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Selected work</p>
-          <h2 className="text-4xl font-semibold text-slate-900 sm:text-5xl">Recent Projects & Fixations</h2>
-          <p className="max-w-3xl text-sm text-slate-600">
-            A sampling of the projects that pique my interest, and inefficiencies that I&apos;m fixing.
+      
+      {/* Top left corner button */}
+      <div className="fixed top-0 left-0 pt-10 pl-[90px] z-10">
+        <Link 
+          href="/RLTracker"
+          className="group inline-block"
+        >
+          <p className="text-white/40 text-sm md:text-base font-light font-mono tracking-tight hover:text-white/60 transition-colors duration-200">
+            {'>'} RLTracker
           </p>
-        </div>
-        <div className="grid gap-6">
-          {projectDeck.map((project) => (
-            <article
-              key={project.title}
-              className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/80 p-8 shadow-xl shadow-slate-200/40 backdrop-blur-sm"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs uppercase tracking-[0.4em] text-slate-500">
-                <span>{project.timeframe}</span>
-              </div>
-              <h3 className="text-2xl font-semibold text-slate-900">{project.title}</h3>
-              <p className="text-base text-slate-600">{project.summary}</p>
-              <p className="text-sm font-semibold uppercase tracking-[0.4em] text-emerald-600">
-                Outcome: {project.result}
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                <div className="flex flex-wrap items-center gap-2">
-                  {project.stack.map((tech) => (
-                    <span key={tech} className="rounded-full border border-slate-200 px-3 py-1 text-slate-600">
-                      <AnimatedButtonText>{tech}</AnimatedButtonText>
-                    </span>
-                  ))}
-                </div>
-                {project.github && (
-                  <Link
-                    href={project.github}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                    aria-label="View on GitHub"
-                  >
-                    <FaGithub className="h-4 w-4" />
-                  </Link>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+        </Link>
       </div>
-    </section>
-  );
-}
-
-function LabCallout() {
-  return (
-    <section className="relative isolate px-6 pb-28">
-      <div className="mx-auto max-w-6xl rounded-3xl border border-slate-200 bg-white/80 p-10 text-center shadow-xl shadow-slate-200/40 backdrop-blur-sm">
-        <p className="text-xs uppercase tracking-[0.55em] text-slate-500">Get in touch</p>
-        <h2 className="mt-4 text-4xl font-semibold text-slate-900">Got a system that won’t behave?</h2>
-        <p className="mt-4 text-base text-slate-600">
-        I’ve debugged worse.
-        Let’s experiment, iterate, and get it back on the road.
+      
+      {/* Bottom left corner text */}
+      <div className="fixed bottom-0 left-0 pb-10 pl-[90px] z-10">
+        <h1 className="text-white text-6xl md:text-7xl font-normal tracking-tight">
+          Zach Robertson
+        </h1>
+      </div>
+      
+      {/* Bottom right corner text */}
+      <div className="fixed bottom-0 right-0 pb-10 pr-[90px] z-10">
+        <p className="text-white/90 text-4xl md:text-5xl font-light">
+          Integration Engineer
         </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm font-semibold uppercase tracking-[0.35em]">
-          <Link
-            href="mailto:zach@zachrobertson.co"
-            className="rounded-xl border border-slate-200 bg-slate-50 px-8 py-3 text-slate-900 transition hover:border-slate-300 hover:bg-slate-100"
-          >
-            <AnimatedButtonText>Email Zach</AnimatedButtonText>
-          </Link>
-          <Link
-            href="https://www.linkedin.com/in/zach-robertson"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-transparent bg-emerald-700/80 px-8 py-3 text-white transition hover:bg-emerald-700"
-          >
-            <AnimatedButtonText>Connect on LinkedIn</AnimatedButtonText>
-          </Link>
-        </div>
       </div>
-    </section>
+    </div>
   );
 }
