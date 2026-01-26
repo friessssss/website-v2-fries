@@ -53,7 +53,6 @@ export default function AsciiTorusKnot() {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     // Move camera further back on mobile to make model appear smaller
-    const isMobile = width < 768;
     camera.position.z = isMobile ? 12 : 8;
 
     // Create torus knot geometry
@@ -207,7 +206,9 @@ export default function AsciiTorusKnot() {
           let offsetX = 0;
           let offsetY = 0;
           
-          if (!isMobile) {
+          // Check current width to determine if mobile (in case of resize)
+          const currentIsMobile = width < 768;
+          if (!currentIsMobile) {
             const mouseDistance = Math.hypot(screenX - mouseState.x, screenY - mouseState.y);
             
             // Add per-cell randomness for organic variation
@@ -343,10 +344,9 @@ export default function AsciiTorusKnot() {
     return () => {
       cancelAnimationFrame(animationFrame);
       window.removeEventListener('resize', updateSize);
-      if (!isMobile) {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseleave', handleMouseLeave);
-      }
+      // Always try to remove mouse listeners (safe even if not added)
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseleave', handleMouseLeave);
       geometry.dispose();
       material.dispose();
       renderer.dispose();
