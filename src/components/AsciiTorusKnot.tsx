@@ -158,7 +158,7 @@ export default function AsciiTorusKnot() {
       const currentTime = time;
 
       // Clean up old dissolved cells
-      for (const [key, cell] of dissolvedCells.entries()) {
+      for (const [key, cell] of Array.from(dissolvedCells.entries())) {
         if (currentTime - cell.recoveryStart > 400) {
           dissolvedCells.delete(key);
         }

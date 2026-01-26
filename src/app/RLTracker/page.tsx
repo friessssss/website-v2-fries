@@ -292,49 +292,49 @@ function RLTrackerContent() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-2">
               <div className={`w-2 h-2 rounded-full ${
-                isRefreshing ? 'bg-blue-500 animate-pulse' : 'bg-green-500'
+                isRefreshing ? 'bg-[#c3ff41] animate-pulse' : 'bg-[#c3ff41]'
               }`}></div>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-white/70">
                 {isRefreshing ? 'Updating...' : 'Auto-refreshing every 20s'}
               </span>
             </div>
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              className="px-4 py-2 glass-panel border border-white/8 text-[#f5f8f1] rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-colors duration-200"
             >
               {isRefreshing ? 'Updating...' : 'Refresh Now'}
             </button>
           </div>
           
           {lastUpdate && (
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-white/50 mb-4">
               Last updated: {formatLastUpdate(lastUpdate)}
             </p>
           )}
           
           {loading && (
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="flex items-center space-x-2 text-white/70">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#c3ff41]"></div>
               <span>Loading current track...</span>
             </div>
           )}
 
           {!isAuthenticated && (
-            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-8 text-center">
+            <div className="glass-panel border border-white/8 rounded-lg p-8 text-center">
               <div className="mb-6">
                 <div className="text-6xl mb-4">🎵</div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                <h3 className="text-2xl font-semibold text-[#f5f8f1] mb-2">
                   Connect Your Spotify Account
                 </h3>
-                <p className="text-gray-600 mb-6">
+                <p className="text-white/70 mb-6">
                   Connect your Spotify account to automatically track which song is playing when goals are scored!
                 </p>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
-                <h4 className="font-semibold text-blue-900 mb-2">📋 Before You Connect:</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
+              <div className="glass-panel border border-white/8 rounded-lg p-4 mb-6 text-left">
+                <h4 className="font-semibold text-[#f5f8f1] mb-2">📋 Before You Connect:</h4>
+                <ul className="text-sm text-white/70 space-y-1">
                   <li>• Make sure you have <strong>Spotify Premium</strong> (recommended)</li>
                   <li>• Have music <strong>currently playing</strong> on your Spotify account</li>
                   <li>• Grant <strong>ALL requested permissions</strong> when prompted</li>
@@ -344,22 +344,22 @@ function RLTrackerContent() {
               
               <button
                 onClick={connectSpotify}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="bg-[#c3ff41] hover:bg-[#b0e639] text-[#070b05] font-semibold py-4 px-8 rounded-lg text-lg transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 🎵 Connect Spotify Account
               </button>
               
-              <p className="text-sm text-gray-500 mt-4">
+              <p className="text-sm text-white/50 mt-4">
                 You&apos;ll be redirected to Spotify to authorize this app
               </p>
             </div>
           )}
 
           {error && isAuthenticated && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800">Error: {error}</p>
+            <div className="glass-panel border border-red-500/30 rounded-lg p-4">
+              <p className="text-red-400">Error: {error}</p>
               <div className="mt-3">
-                <p className="text-red-600 text-sm mb-2">
+                <p className="text-red-300/80 text-sm mb-2">
                   {error.includes('Insufficient permissions') 
                     ? 'Your Spotify account needs additional permissions to read your currently playing track. This usually happens with free Spotify accounts or when certain permissions are restricted.'
                     : 'There was an issue with your Spotify connection.'
@@ -368,12 +368,12 @@ function RLTrackerContent() {
                 <div className="space-y-2">
                   <button
                     onClick={connectSpotify}
-                    className="inline-block bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 text-sm mr-2"
+                    className="inline-block bg-[#c3ff41] text-[#070b05] px-4 py-2 rounded-lg hover:bg-[#b0e639] transition-colors duration-200 text-sm mr-2 font-semibold"
                   >
                     🔄 Reconnect Spotify
                   </button>
                   {error.includes('Insufficient permissions') && (
-                    <div className="text-xs text-gray-600 mt-2">
+                    <div className="text-xs text-white/60 mt-2">
                       <p><strong>Note:</strong> Make sure you&apos;re using a Spotify Premium account and grant all requested permissions during authorization.</p>
                     </div>
                   )}
@@ -383,7 +383,7 @@ function RLTrackerContent() {
           )}
 
           {currentTrack && !loading && isAuthenticated && (
-            <div className={`bg-white rounded-lg shadow-lg p-6 border transition-opacity duration-1000 ${
+            <div className={`glass-panel border border-white/8 rounded-lg p-6 transition-opacity duration-1000 ${
               isRefreshing ? 'opacity-85' : 'opacity-100'
             }`}>
               <div className="flex items-center space-x-4">
@@ -397,24 +397,24 @@ function RLTrackerContent() {
                   />
                 )}
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 className="text-lg font-semibold text-[#f5f8f1]">
                     {currentTrack.name}
                   </h3>
-                  <p className="text-gray-600">{currentTrack.artist}</p>
-                  <p className="text-sm text-gray-500">{currentTrack.album}</p>
+                  <p className="text-white/70">{currentTrack.artist}</p>
+                  <p className="text-sm text-white/50">{currentTrack.album}</p>
                   {currentTrack.playlist && (
-                    <p className="text-sm text-blue-600 font-medium">📜 {currentTrack.playlist.name}</p>
+                    <p className="text-sm text-[#c3ff41] font-medium">📜 {currentTrack.playlist.name}</p>
                   )}
                   <div className="flex items-center mt-2">
                     <div className={`w-2 h-2 rounded-full mr-2 ${
-                      currentTrack.isPlaying ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
+                      currentTrack.isPlaying ? 'bg-[#c3ff41] animate-pulse' : 'bg-white/40'
                     }`}></div>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-white/70">
                       {currentTrack.isPlaying ? 'Now Playing' : 'Paused'}
                     </span>
                   </div>
                   {currentTrack.timestamp && (
-                    <div className="mt-2 text-xs text-gray-500">
+                    <div className="mt-2 text-xs text-white/50">
                       <div>API Time: {new Date(currentTrack.timestamp).toLocaleTimeString()}</div>
                       {currentTrack.progress && (
                         <div>Progress: {Math.floor(currentTrack.progress / 1000)}s</div>
@@ -429,18 +429,18 @@ function RLTrackerContent() {
 
         {/* Goal Tracking Section */}
         {isAuthenticated && (
-          <div className={`bg-white rounded-lg shadow-lg p-6 border mt-6 transition-opacity duration-1000 ${isRefreshing ? 'opacity-80' : 'opacity-100'}`}>
-            <h3 className="text-xl font-semibold mb-4 text-gray-900">Goal Tracking</h3>
+          <div className={`glass-panel border border-white/8 rounded-lg p-6 mt-6 transition-opacity duration-1000 ${isRefreshing ? 'opacity-80' : 'opacity-100'}`}>
+            <h3 className="text-xl font-semibold mb-4 text-[#f5f8f1]">Goal Tracking</h3>
             
             <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">Goals tracked this session: {goalCount}</p>
+              <p className="text-sm text-white/70 mb-2">Goals tracked this session: {goalCount}</p>
             </div>
 
           {/* Opponent Goal Button */}
           <div className="mb-6">
             <button
               onClick={() => handleGoal('Opponent')}
-              className="w-full py-3 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors duration-200 shadow-md"
+              className="w-full py-3 px-4 bg-red-500/20 border border-red-500/40 text-red-300 font-semibold rounded-lg hover:bg-red-500/30 transition-colors duration-200"
             >
               🚨 OPPONENT SCORED
             </button>
@@ -450,37 +450,37 @@ function RLTrackerContent() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => handleGoal('Vandy')}
-              className="py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Vandy ⚽
             </button>
             <button
               onClick={() => handleGoal('Ashton')}
-              className="py-3 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Ashton ⚽
             </button>
             <button
               onClick={() => handleGoal('Sam')}
-              className="py-3 px-4 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Sam ⚽
             </button>
             <button
               onClick={() => handleGoal('Mason')}
-              className="py-3 px-4 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Mason ⚽
             </button>
             <button
               onClick={() => handleGoal('Jake')}
-              className="py-3 px-4 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Jake ⚽
             </button>
             <button
               onClick={() => handleGoal('Zach')}
-              className="py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors duration-200 shadow-md"
+              className="py-3 px-4 glass-panel border border-white/8 text-[#f5f8f1] font-semibold rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               Zach ⚽
             </button>
@@ -491,7 +491,7 @@ function RLTrackerContent() {
             <button
               onClick={handleRemoveLastGoal}
               disabled={goalCount === 0}
-              className="w-full py-3 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 shadow-md"
+              className="w-full py-3 px-4 glass-panel border border-white/8 text-white/60 font-semibold rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               🗑️ Remove Last Goal
             </button>
@@ -501,29 +501,29 @@ function RLTrackerContent() {
 
         {/* Recent Goals Section */}
         {isAuthenticated && (
-          <div className={`bg-white rounded-lg shadow-lg p-6 border mt-6 transition-opacity duration-1000 ${isRefreshing ? 'opacity-80' : 'opacity-100'}`}>
-            <h3 className="text-xl font-semibold mb-4 text-gray-900">Recent Goals</h3>
+          <div className={`glass-panel border border-white/8 rounded-lg p-6 mt-6 transition-opacity duration-1000 ${isRefreshing ? 'opacity-80' : 'opacity-100'}`}>
+            <h3 className="text-xl font-semibold mb-4 text-[#f5f8f1]">Recent Goals</h3>
             
             {recentGoals.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No goals recorded yet. Score some goals to see them here!</p>
+              <p className="text-white/50 text-center py-4">No goals recorded yet. Score some goals to see them here!</p>
             ) : (
               <div className="space-y-3">
                 {recentGoals.slice(0, 5).map((goal, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-3 glass-panel border border-white/8 rounded-lg">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                      <div className="w-8 h-8 bg-[#c3ff41] text-[#070b05] rounded-full flex items-center justify-center text-sm font-bold">
                         {goal.player.charAt(0)}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{goal.player}</p>
-                        <p className="text-sm text-gray-600">{goal.song} - {goal.artist}</p>
+                        <p className="font-medium text-[#f5f8f1]">{goal.player}</p>
+                        <p className="text-sm text-white/70">{goal.song} - {goal.artist}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-white/50">
                         {new Date(goal.timestamp).toLocaleTimeString()}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-white/40">
                         {Math.floor(goal.progress / 1000)}s into song
                       </p>
                     </div>

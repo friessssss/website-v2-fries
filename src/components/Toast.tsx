@@ -32,10 +32,10 @@ export default function Toast({ message, isVisible, onClose }: ToastProps) {
           isAnimating ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
         }`}
       >
-        <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border border-green-400">
+        <div className="glass-panel border border-[#c3ff41]/30 px-6 py-4 rounded-lg shadow-lg">
           <div className="flex items-center space-x-2">
             <span className="text-xl">🎉</span>
-            <span className="font-medium">{message}</span>
+            <span className="font-medium text-[#f5f8f1]">{message}</span>
           </div>
         </div>
       </div>
