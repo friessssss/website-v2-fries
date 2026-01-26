@@ -38,7 +38,7 @@ export default function WorkTimeline() {
 
   return (
     <div className="relative w-full">
-      <h2 className="text-4xl md:text-5xl font-light text-white/90 mb-16 text-left">
+      <h2 className="text-3xl md:text-4xl lg:text-5xl font-light text-white/90 mb-8 md:mb-16 text-left">
         Work History
       </h2>
       
@@ -47,7 +47,7 @@ export default function WorkTimeline() {
         <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white/20" />
         
         {/* Timeline items */}
-        <div className="space-y-16">
+        <div className="space-y-8 md:space-y-16">
           {workHistory.map((item, index) => {
             const isVisible = visibleItems.has(index);
             
@@ -60,11 +60,11 @@ export default function WorkTimeline() {
                 className="relative flex items-start justify-start"
               >
                 {/* Timeline point */}
-                <div className="absolute left-0 w-4 h-4 rounded-full bg-white/40 border-2 border-white/60 transform -translate-x-1/2 -translate-y-1 z-10" />
+                <div className="absolute left-0 w-3 h-3 md:w-4 md:h-4 rounded-full bg-white/40 border-2 border-white/60 transform -translate-x-1/2 -translate-y-1 z-10" />
                 
                 {/* Content */}
                 <div
-                  className={`flex-1 ml-12 text-left transition-all duration-1000 ease-out ${
+                  className={`flex-1 ml-8 md:ml-12 text-left transition-all duration-1000 ease-out ${
                     isVisible
                       ? 'opacity-100 translate-x-0'
                       : 'opacity-0 -translate-x-8'
@@ -73,23 +73,23 @@ export default function WorkTimeline() {
                     transitionDelay: `${index * 150}ms`,
                   }}
                 >
-                  <div className="text-white/60 text-sm font-mono mb-2">
+                  <div className="text-white/60 text-xs md:text-sm font-mono mb-1 md:mb-2">
                     {item.year}
                   </div>
-                  <h3 className="text-2xl md:text-3xl font-light text-white/90 mb-2">
+                  <h3 className="text-xl md:text-2xl lg:text-3xl font-light text-white/90 mb-1 md:mb-2">
                     {item.title}
                   </h3>
-                  <div className="text-white/70 text-lg mb-3 font-light">
+                  <div className="text-white/70 text-base md:text-lg mb-2 md:mb-3 font-light">
                     {item.company}
                   </div>
-                  <p className="text-white/60 text-base leading-relaxed mb-4">
+                  <p className="text-white/60 text-sm md:text-base leading-relaxed mb-3 md:mb-4">
                     {item.description}
                   </p>
-                  <div className="flex flex-wrap gap-2 justify-start">
+                  <div className="flex flex-wrap gap-1.5 md:gap-2 justify-start">
                     {item.technologies.map((tech, techIndex) => (
                       <span
                         key={techIndex}
-                        className="px-3 py-1 text-xs font-mono text-white/50 bg-white/5 rounded border border-white/10"
+                        className="px-2 py-0.5 md:px-3 md:py-1 text-[10px] md:text-xs font-mono text-white/50 bg-white/5 rounded border border-white/10"
                       >
                         {tech}
                       </span>

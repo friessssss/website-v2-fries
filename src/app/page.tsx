@@ -24,7 +24,7 @@ export default function Page() {
       <div className="relative min-h-screen flex flex-col items-center justify-center px-6">
         <AsciiDitherBackground />
         <div
-          className="fixed inset-0 pointer-events-none"
+          className="fixed inset-0 pointer-events-none hidden md:block"
           style={{
             opacity,
             transform: `translateY(${translateY}px)`,
@@ -38,12 +38,12 @@ export default function Page() {
         </div>
         
         {/* Top left corner button */}
-        <div className="fixed top-0 left-0 pt-10 pl-[90px] z-20">
+        <div className="fixed top-0 left-0 pt-4 md:pt-10 pl-4 md:pl-[90px] z-20">
           <Link 
             href="/RLTracker"
             className="group inline-block"
           >
-            <p className="text-white/40 text-sm md:text-base font-light font-mono tracking-tight hover:text-white/60 transition-colors duration-200">
+            <p className="text-white/40 text-xs md:text-base font-light font-mono tracking-tight hover:text-white/60 transition-colors duration-200">
               {'>'} RLTracker
             </p>
           </Link>
@@ -51,28 +51,28 @@ export default function Page() {
         
         {/* Bottom left corner text */}
         <div 
-          className="fixed bottom-0 left-0 pb-10 pl-[90px] z-20"
+          className="fixed bottom-0 left-0 pb-4 md:pb-10 pl-4 md:pl-[90px] z-20 max-w-[60%] md:max-w-none"
           style={{
             opacity,
             transform: `translateY(${translateY}px)`,
             transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
           }}
         >
-          <h1 className="text-white text-6xl md:text-7xl font-normal tracking-tight">
+          <h1 className="text-white text-2xl md:text-6xl lg:text-7xl font-normal tracking-tight leading-tight">
             Zach Robertson
           </h1>
         </div>
         
         {/* Bottom right corner text */}
         <div 
-          className="fixed bottom-0 right-0 pb-10 pr-[90px] z-20"
+          className="fixed bottom-0 right-0 pb-4 md:pb-10 pr-4 md:pr-[90px] z-20 max-w-[60%] md:max-w-none"
           style={{
             opacity,
             transform: `translateY(${translateY}px)`,
             transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
           }}
         >
-          <p className="text-white/90 text-4xl md:text-5xl font-light">
+          <p className="text-white/90 text-lg md:text-4xl lg:text-5xl font-light leading-tight text-right">
             Integration Engineer
           </p>
         </div>
@@ -81,8 +81,8 @@ export default function Page() {
       {/* Scrollable Content Sections */}
       <div className="relative z-10">
         {/* Work Timeline and Contact - Side by Side */}
-        <div className="relative min-h-screen flex items-center">
-          <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-24 px-8 lg:px-16">
+        <div className="relative min-h-screen flex items-center py-8 md:py-0">
+          <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-8 lg:gap-24 px-4 md:px-8 lg:px-16">
             <WorkTimeline />
             <ContactSection />
           </div>
