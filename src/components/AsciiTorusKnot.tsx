@@ -39,6 +39,7 @@ export default function AsciiTorusKnot() {
     let columns = 0;
     let rows = 0;
     let glyphSize = 14;
+    let isMobile = width < 768;
 
     // Three.js setup - off-screen WebGL renderer
     const renderer = new THREE.WebGLRenderer({ 
@@ -107,7 +108,7 @@ export default function AsciiTorusKnot() {
       renderer.setSize(width, height, false);
       
       // Adjust camera position based on screen size
-      const isMobile = width < 768;
+      isMobile = width < 768;
       camera.position.z = isMobile ? 12 : 8;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -201,103 +202,106 @@ export default function AsciiTorusKnot() {
           );
           const glyph = GLYPHS[glyphIndex];
 
-          // Calculate mouse dissolution effect
+          // Calculate mouse dissolution effect (skip on mobile)
           let opacity = 1;
           let offsetX = 0;
           let offsetY = 0;
-          const mouseDistance = Math.hypot(screenX - mouseState.x, screenY - mouseState.y);
           
-          // Add per-cell randomness for organic variation
-          const cellRandom = hashCell(x, y);
-          const cellRandom2 = hashCell(y, x); // Different seed for variety
-          
-          // Gaussian sigma controls the falloff width - larger = softer, wider influence
-          // Add per-cell variation to break up the circular pattern
-          const baseSigma = 70; // Base sigma for Gaussian
-          const sigmaVariation = cellRandom * 30; // 0-30px variation per cell
-          const sigma = baseSigma + sigmaVariation;
-          
-          // Calculate Gaussian influence - naturally fades to near-zero at edges
-          const gaussianT = gaussianFalloff(mouseDistance, sigma);
-          
-          // Scale random variation by distance - outer pixels get more variation
-          const distanceNoiseFactor = Math.min(1, mouseDistance / 100);
-          const noiseScale = 0.15 + distanceNoiseFactor * 0.35; // 0.15 near center, up to 0.5 at edges
-          
-          // Apply random variation that increases with distance
-          let dissolveT = gaussianT * (1 + (cellRandom - 0.5) * noiseScale);
-          dissolveT = Math.max(0, Math.min(1, dissolveT));
-
-          if (mouseState.isActive && dissolveT > 0.01) {
-            // Fade opacity based on Gaussian influence
-            opacity = 1 - (dissolveT * 0.9);
-
-            // Calculate direction away from mouse
-            const dx = screenX - mouseState.x;
-            const dy = screenY - mouseState.y;
-            const distance = Math.max(mouseDistance, 1);
-            const dirX = dx / distance;
-            const dirY = dy / distance;
-
-            // Add slight angular variation to push direction (increases with distance)
-            const angleVariation = (cellRandom2 - 0.5) * (0.3 + distanceNoiseFactor * 0.4);
-            const cosAngle = Math.cos(angleVariation);
-            const sinAngle = Math.sin(angleVariation);
-            const variedDirX = dirX * cosAngle - dirY * sinAngle;
-            const variedDirY = dirX * sinAngle + dirY * cosAngle;
-
-            // Push characters outward - reduced base push for softer effect
-            const basePush = dissolveT * 100;
-            const pushVariation = 1 + (cellRandom - 0.5) * (0.4 + distanceNoiseFactor * 0.4);
-            const pushDistance = basePush * pushVariation;
+          if (!isMobile) {
+            const mouseDistance = Math.hypot(screenX - mouseState.x, screenY - mouseState.y);
             
-            offsetX = variedDirX * pushDistance;
-            offsetY = variedDirY * pushDistance;
+            // Add per-cell randomness for organic variation
+            const cellRandom = hashCell(x, y);
+            const cellRandom2 = hashCell(y, x); // Different seed for variety
+            
+            // Gaussian sigma controls the falloff width - larger = softer, wider influence
+            // Add per-cell variation to break up the circular pattern
+            const baseSigma = 70; // Base sigma for Gaussian
+            const sigmaVariation = cellRandom * 30; // 0-30px variation per cell
+            const sigma = baseSigma + sigmaVariation;
+            
+            // Calculate Gaussian influence - naturally fades to near-zero at edges
+            const gaussianT = gaussianFalloff(mouseDistance, sigma);
+            
+            // Scale random variation by distance - outer pixels get more variation
+            const distanceNoiseFactor = Math.min(1, mouseDistance / 100);
+            const noiseScale = 0.15 + distanceNoiseFactor * 0.35; // 0.15 near center, up to 0.5 at edges
+            
+            // Apply random variation that increases with distance
+            let dissolveT = gaussianT * (1 + (cellRandom - 0.5) * noiseScale);
+            dissolveT = Math.max(0, Math.min(1, dissolveT));
 
-            // Track dissolved cells
-            if (dissolveT > 0.05) {
-              if (!dissolvedCells.has(cellKey)) {
-                dissolvedCells.set(cellKey, {
-                  x,
-                  y,
-                  timestamp: currentTime,
-                  recoveryStart: currentTime,
-                  offsetX,
-                  offsetY,
-                  dissolveStrength: dissolveT,
-                });
-              } else {
-                const cell = dissolvedCells.get(cellKey)!;
-                cell.timestamp = currentTime;
-                cell.offsetX = offsetX;
-                cell.offsetY = offsetY;
-                cell.dissolveStrength = dissolveT;
-              }
-            }
-          } else if (!mouseState.isActive || dissolveT <= 0.01) {
-            // Check if this cell is recovering
-            if (dissolvedCells.has(cellKey)) {
-              const cell = dissolvedCells.get(cellKey)!;
-              const timeSinceLastDissolve = currentTime - cell.timestamp;
+            if (mouseState.isActive && dissolveT > 0.01) {
+              // Fade opacity based on Gaussian influence
+              opacity = 1 - (dissolveT * 0.9);
 
-              // Start recovery after 100ms
-              if (timeSinceLastDissolve > 100) {
-                if (cell.recoveryStart === cell.timestamp) {
-                  cell.recoveryStart = currentTime;
+              // Calculate direction away from mouse
+              const dx = screenX - mouseState.x;
+              const dy = screenY - mouseState.y;
+              const distance = Math.max(mouseDistance, 1);
+              const dirX = dx / distance;
+              const dirY = dy / distance;
+
+              // Add slight angular variation to push direction (increases with distance)
+              const angleVariation = (cellRandom2 - 0.5) * (0.3 + distanceNoiseFactor * 0.4);
+              const cosAngle = Math.cos(angleVariation);
+              const sinAngle = Math.sin(angleVariation);
+              const variedDirX = dirX * cosAngle - dirY * sinAngle;
+              const variedDirY = dirX * sinAngle + dirY * cosAngle;
+
+              // Push characters outward - reduced base push for softer effect
+              const basePush = dissolveT * 100;
+              const pushVariation = 1 + (cellRandom - 0.5) * (0.4 + distanceNoiseFactor * 0.4);
+              const pushDistance = basePush * pushVariation;
+              
+              offsetX = variedDirX * pushDistance;
+              offsetY = variedDirY * pushDistance;
+
+              // Track dissolved cells
+              if (dissolveT > 0.05) {
+                if (!dissolvedCells.has(cellKey)) {
+                  dissolvedCells.set(cellKey, {
+                    x,
+                    y,
+                    timestamp: currentTime,
+                    recoveryStart: currentTime,
+                    offsetX,
+                    offsetY,
+                    dissolveStrength: dissolveT,
+                  });
+                } else {
+                  const cell = dissolvedCells.get(cellKey)!;
+                  cell.timestamp = currentTime;
+                  cell.offsetX = offsetX;
+                  cell.offsetY = offsetY;
+                  cell.dissolveStrength = dissolveT;
                 }
-                
-                const recoveryProgress = Math.min(1, (currentTime - cell.recoveryStart) / 400);
-                opacity = recoveryProgress;
-                
-                // Ease back to original position
-                const easeProgress = recoveryProgress * recoveryProgress * (3 - 2 * recoveryProgress); // smoothstep
-                offsetX = cell.offsetX * (1 - easeProgress);
-                offsetY = cell.offsetY * (1 - easeProgress);
-              } else {
-                // Still in dissolve state
-                opacity = 1 - cell.dissolveStrength;
-                offsetX = cell.offsetX;
-                offsetY = cell.offsetY;
+              }
+            } else if (!mouseState.isActive || dissolveT <= 0.01) {
+              // Check if this cell is recovering
+              if (dissolvedCells.has(cellKey)) {
+                const cell = dissolvedCells.get(cellKey)!;
+                const timeSinceLastDissolve = currentTime - cell.timestamp;
+
+                // Start recovery after 100ms
+                if (timeSinceLastDissolve > 100) {
+                  if (cell.recoveryStart === cell.timestamp) {
+                    cell.recoveryStart = currentTime;
+                  }
+                  
+                  const recoveryProgress = Math.min(1, (currentTime - cell.recoveryStart) / 400);
+                  opacity = recoveryProgress;
+                  
+                  // Ease back to original position
+                  const easeProgress = recoveryProgress * recoveryProgress * (3 - 2 * recoveryProgress); // smoothstep
+                  offsetX = cell.offsetX * (1 - easeProgress);
+                  offsetY = cell.offsetY * (1 - easeProgress);
+                } else {
+                  // Still in dissolve state
+                  opacity = 1 - cell.dissolveStrength;
+                  offsetX = cell.offsetX;
+                  offsetY = cell.offsetY;
+                }
               }
             }
           }
@@ -329,14 +333,20 @@ export default function AsciiTorusKnot() {
     updateSize();
     animationFrame = requestAnimationFrame(render);
     window.addEventListener('resize', updateSize);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseleave', handleMouseLeave);
+    
+    // Only add mouse event listeners on desktop
+    if (!isMobile) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseleave', handleMouseLeave);
+    }
 
     return () => {
       cancelAnimationFrame(animationFrame);
       window.removeEventListener('resize', updateSize);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseleave', handleMouseLeave);
+      if (!isMobile) {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseleave', handleMouseLeave);
+      }
       geometry.dispose();
       material.dispose();
       renderer.dispose();
