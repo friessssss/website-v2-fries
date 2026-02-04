@@ -63,7 +63,10 @@ export default function FluidCursor({ className }: FluidCursorProps) {
   return (
     <canvas
       ref={canvasRef}
-      className={clsx('absolute inset-0 h-full w-full pointer-events-auto z-5 opacity-70', className)}
+      className={clsx(
+        'fixed inset-0 h-full w-full pointer-events-auto z-[5] opacity-70',
+        className,
+      )}
       style={{ mixBlendMode: 'screen' }}
     />
   );
