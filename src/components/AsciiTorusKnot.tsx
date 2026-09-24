@@ -15,11 +15,13 @@ const GALLERY_MODELS = [
 const GALLERY_INTERVAL_MS = 20000; // time each model is shown, including the dissolve into the next
 const TRANSITION_MS = 1800; // duration of the dissolve between models
 const MODEL_SCALE = 1.2; // loaded models' size relative to the torus knot
-// Starting tilt so models first appear seen from slightly above
-const MODEL_TILT_X = 0.35;
-// Rotation speed per axis in radians per millisecond
-const TORUS_SPIN = new THREE.Vector3(0.00009, 0.0003, 0);
-const MODEL_SPIN = new THREE.Vector3(0.00011, 0.0003, 0.00007);
+// Models spin freely around their vertical axis but only rock gently on the
+// other two, so they never flip over into an unrecognizable angle.
+const MODEL_TILT_X = 0.35; // resting tilt so models are seen from slightly above
+const MODEL_ROCK = { x: 0.2, z: 0.12 }; // max rocking away from rest, in radians
+const MODEL_ROCK_PERIOD_MS = { x: 9000, z: 13000 };
+// Rotation speed in radians per millisecond
+const SPIN_SPEED = 0.0003;
 // Samples per glyph cell along each axis. Averaging them keeps fine detail
 // (like the solar panels) from flickering as the model rotates.
 const SAMPLES_PER_CELL = 4;
@@ -28,7 +30,10 @@ const DISSOLVE_EDGE = 0.12; // width of the scrambled band at the dissolve front
 
 interface GalleryItem {
   object: THREE.Object3D;
-  spin: THREE.Vector3;
+  // Torus knot tumbles freely; models spin upright and rock within MODEL_ROCK
+  tumble: boolean;
+  // Time this item has been animated, used to drive the rocking
+  age: number;
 }
 
 interface MouseState {
@@ -104,7 +109,7 @@ export default function AsciiTorusKnot() {
     geometry.boundingBox!.getSize(torusSize);
     const targetSize = Math.max(torusSize.x, torusSize.y, torusSize.z);
 
-    const gallery: GalleryItem[] = [{ object: mesh, spin: TORUS_SPIN }];
+    const gallery: GalleryItem[] = [{ object: mesh, tumble: true, age: 0 }];
     let activeIndex = 0;
     let lastSwitch = 0;
     let isDisposed = false;
@@ -165,7 +170,7 @@ export default function AsciiTorusKnot() {
           // Append models that are ready, preserving order
           gallery.length = 1;
           loadedModels.forEach((object) => {
-            if (object) gallery.push({ object, spin: MODEL_SPIN });
+            if (object) gallery.push({ object, tumble: false, age: 0 });
           });
         },
         undefined,
@@ -339,12 +344,17 @@ export default function AsciiTorusKnot() {
         ? smoothstep(transitionStart, GALLERY_INTERVAL_MS, elapsed) * (1 + 2 * DISSOLVE_EDGE) - DISSOLVE_EDGE
         : 0;
 
-      // Slowly rotate on all axes
       [activeItem, nextItem].forEach((item) => {
         if (!item) return;
-        item.object.rotation.x += item.spin.x * deltaTime;
-        item.object.rotation.y += item.spin.y * deltaTime;
-        item.object.rotation.z += item.spin.z * deltaTime;
+        item.age += deltaTime;
+        item.object.rotation.y += SPIN_SPEED * deltaTime;
+        if (item.tumble) {
+          item.object.rotation.x += SPIN_SPEED * 0.3 * deltaTime;
+        } else {
+          const phase = item.age * Math.PI * 2;
+          item.object.rotation.x = MODEL_TILT_X + MODEL_ROCK.x * Math.sin(phase / MODEL_ROCK_PERIOD_MS.x);
+          item.object.rotation.z = MODEL_ROCK.z * Math.sin(phase / MODEL_ROCK_PERIOD_MS.z);
+        }
       });
 
       renderToCells(activeItem, currentCells);
