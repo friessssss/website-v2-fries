@@ -25,6 +25,9 @@ const SPIN_SPEED = 0.0003;
 // Samples per glyph cell along each axis. Averaging them keeps fine detail
 // (like the solar panels) from flickering as the model rotates.
 const SAMPLES_PER_CELL = 4;
+// Model materials rendered dimmer so they read as lighter glyphs, e.g. windows vs. body
+const DIMMED_MATERIALS = new Set(['GLASS']);
+const DIMMED_BRIGHTNESS = 0.3;
 const MIN_COVERAGE = 0.35; // fraction of a cell the geometry must cover to draw a glyph
 const DISSOLVE_EDGE = 0.12; // width of the scrambled band at the dissolve front
 
@@ -103,6 +106,29 @@ export default function AsciiTorusKnot() {
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
+    // Same normal shading, scaled down so glyph selection picks sparser characters
+    const dimmedMaterial = new THREE.ShaderMaterial({
+      uniforms: { brightness: { value: DIMMED_BRIGHTNESS } },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float brightness;
+        varying vec3 vNormal;
+        void main() {
+          // Flip back-facing normals so the glass shades the same from inside and out
+          vec3 normal = normalize(vNormal) * (gl_FrontFacing ? 1.0 : -1.0);
+          gl_FragColor = vec4((normal * 0.5 + 0.5) * brightness, 1.0);
+        }
+      `,
+      // The glass is a single-sided shell, so without this it vanishes when seen from behind
+      side: THREE.DoubleSide,
+    });
+
     // Loaded models are scaled to match the torus knot's on-screen size
     geometry.computeBoundingBox();
     const torusSize = new THREE.Vector3();
@@ -125,8 +151,9 @@ export default function AsciiTorusKnot() {
         if ((child as THREE.Mesh).isMesh) {
           const childMesh = child as THREE.Mesh;
           const materials = Array.isArray(childMesh.material) ? childMesh.material : [childMesh.material];
+          const isDimmed = materials.some((m) => DIMMED_MATERIALS.has(m.name));
           materials.forEach((m) => m.dispose());
-          childMesh.material = material;
+          childMesh.material = isDimmed ? dimmedMaterial : material;
         }
       });
 
@@ -582,6 +609,7 @@ export default function AsciiTorusKnot() {
       loadedModels.forEach((object) => object && disposeObject(object));
       dracoLoader.dispose();
       material.dispose();
+      dimmedMaterial.dispose();
       renderer.dispose();
     };
   }, []);
