@@ -2,8 +2,26 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 const GLYPHS = [' ', '.', '·', ':', '˙', '-', '=', '+', '*', 'x', '%', '#', '█', '@'];
+
+// Rotating gallery: the torus knot is always first, then these models in order.
+const GALLERY_MODELS = [
+  '/models/AE1_exterior_windows.glb',
+  '/models/AE1_exterior_nowindows.glb',
+];
+const GALLERY_INTERVAL_MS = 12000; // time each model is shown
+const TRANSITION_MS = 600; // duration of each half of the shrink/grow swap
+// Tilt applied to loaded models so they're seen from slightly above while spinning
+const MODEL_TILT_X = 0.35;
+
+interface GalleryItem {
+  object: THREE.Object3D;
+  // Whether the item tumbles on two axes (torus knot) or spins upright (models)
+  tumble: boolean;
+}
 
 interface MouseState {
   x: number;
@@ -72,6 +90,89 @@ export default function AsciiTorusKnot() {
     const material = new THREE.MeshNormalMaterial();
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
+
+    // Loaded models are scaled to match the torus knot's on-screen size
+    geometry.computeBoundingBox();
+    const torusSize = new THREE.Vector3();
+    geometry.boundingBox!.getSize(torusSize);
+    const targetSize = Math.max(torusSize.x, torusSize.y, torusSize.z);
+
+    const gallery: GalleryItem[] = [{ object: mesh, tumble: true }];
+    let activeIndex = 0;
+    let lastSwitch = 0;
+    let isDisposed = false;
+
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('/draco/');
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    // Center and normalize a loaded model inside a pivot so rotation happens around its middle
+    const createGalleryModel = (model: THREE.Object3D): THREE.Object3D => {
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const childMesh = child as THREE.Mesh;
+          const materials = Array.isArray(childMesh.material) ? childMesh.material : [childMesh.material];
+          materials.forEach((m) => m.dispose());
+          childMesh.material = material;
+        }
+      });
+
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const scale = targetSize / Math.max(size.x, size.y, size.z);
+      model.position.sub(center);
+
+      const inner = new THREE.Group();
+      inner.add(model);
+      inner.scale.setScalar(scale);
+
+      const pivot = new THREE.Group();
+      pivot.add(inner);
+      pivot.rotation.x = MODEL_TILT_X;
+      pivot.visible = false;
+      scene.add(pivot);
+      return pivot;
+    };
+
+    const disposeObject = (object: THREE.Object3D) => {
+      object.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).geometry.dispose();
+        }
+      });
+    };
+
+    // Load models in order so the gallery sequence is deterministic
+    const loadedModels: (THREE.Object3D | null)[] = GALLERY_MODELS.map(() => null);
+    GALLERY_MODELS.forEach((url, i) => {
+      gltfLoader.load(
+        url,
+        (gltf) => {
+          if (isDisposed) {
+            disposeObject(gltf.scene);
+            return;
+          }
+          loadedModels[i] = createGalleryModel(gltf.scene);
+          // Append models that are ready, preserving order
+          gallery.length = 1;
+          loadedModels.forEach((object) => {
+            if (object) gallery.push({ object, tumble: false });
+          });
+        },
+        undefined,
+        (error) => console.error(`Failed to load gallery model ${url}`, error)
+      );
+    });
+
+    // Returns a 0-1 scale factor for the shrink-out / grow-in transition
+    const getTransitionScale = (elapsed: number): number => {
+      if (elapsed < TRANSITION_MS) return smoothstep(0, TRANSITION_MS, elapsed);
+      const untilSwitch = GALLERY_INTERVAL_MS - elapsed;
+      if (untilSwitch < TRANSITION_MS) return smoothstep(0, TRANSITION_MS, untilSwitch);
+      return 1;
+    };
 
     // Add lighting for better depth perception
     const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -145,10 +246,28 @@ export default function AsciiTorusKnot() {
       const deltaTime = time - lastTime;
       lastTime = time;
 
-      // Rotate the torus knot (slower)
+      // Advance the gallery once the current item's time is up
+      if (lastSwitch === 0) lastSwitch = time;
+      let elapsed = time - lastSwitch;
+      if (elapsed >= GALLERY_INTERVAL_MS) {
+        activeIndex = (activeIndex + 1) % gallery.length;
+        lastSwitch = time;
+        elapsed = 0;
+      }
+      const activeItem = gallery[activeIndex] ?? gallery[0];
+      gallery.forEach((item) => {
+        item.object.visible = item === activeItem;
+      });
+
+      // Rotate the active item (slower)
       const rotationSpeed = 0.0003;
-      mesh.rotation.y += rotationSpeed * deltaTime;
-      mesh.rotation.x += rotationSpeed * 0.3 * deltaTime;
+      activeItem.object.rotation.y += rotationSpeed * deltaTime;
+      if (activeItem.tumble) {
+        activeItem.object.rotation.x += rotationSpeed * 0.3 * deltaTime;
+      }
+      // Only one item is shown at a time, so skip the transition when there's nothing to switch to
+      const transitionScale = gallery.length > 1 ? getTransitionScale(elapsed) : 1;
+      activeItem.object.scale.setScalar(Math.max(transitionScale, 0.001));
 
       // Render 3D scene to WebGL
       renderer.render(scene, camera);
@@ -347,7 +466,10 @@ export default function AsciiTorusKnot() {
       // Always try to remove mouse listeners (safe even if not added)
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
+      isDisposed = true;
       geometry.dispose();
+      loadedModels.forEach((object) => object && disposeObject(object));
+      dracoLoader.dispose();
       material.dispose();
       renderer.dispose();
     };
