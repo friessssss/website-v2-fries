@@ -10,11 +10,10 @@ const GLYPHS = [' ', '.', '·', ':', '˙', '-', '=', '+', '*', 'x', '%', '#', '�
 // Rotating gallery: the torus knot is always first, then these models in order.
 const GALLERY_MODELS = [
   '/models/AE1_exterior_windows.glb',
-  '/models/AE1_exterior_nowindows.glb',
 ];
 const GALLERY_INTERVAL_MS = 20000; // time each model is shown, including the dissolve into the next
 const TRANSITION_MS = 1800; // duration of the dissolve between models
-const MODEL_SCALE = 1.2; // loaded models' size relative to the torus knot
+const MODEL_SCALE = 1.35; // loaded models' size relative to the torus knot
 // Models spin freely around their vertical axis but only rock gently on the
 // other two, so they never flip over into an unrecognizable angle.
 const MODEL_TILT_X = 0.35; // resting tilt so models are seen from slightly above
