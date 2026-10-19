@@ -2,8 +2,41 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 const GLYPHS = [' ', '.', '·', ':', '˙', '-', '=', '+', '*', 'x', '%', '#', '█', '@'];
+
+// Rotating gallery: the torus knot is always first, then these models in order.
+const GALLERY_MODELS = [
+  '/models/AE1_exterior_windows.glb',
+];
+const GALLERY_INTERVAL_MS = 20000; // time each model is shown, including the dissolve into the next
+const TRANSITION_MS = 1800; // duration of the dissolve between models
+const MODEL_SCALE = 1.35; // loaded models' size relative to the torus knot
+// Models spin freely around their vertical axis but only rock gently on the
+// other two, so they never flip over into an unrecognizable angle.
+const MODEL_TILT_X = 0.35; // resting tilt so models are seen from slightly above
+const MODEL_ROCK = { x: 0.2, z: 0.12 }; // max rocking away from rest, in radians
+const MODEL_ROCK_PERIOD_MS = { x: 9000, z: 13000 };
+// Rotation speed in radians per millisecond
+const SPIN_SPEED = 0.0003;
+// Samples per glyph cell along each axis. Averaging them keeps fine detail
+// (like the solar panels) from flickering as the model rotates.
+const SAMPLES_PER_CELL = 4;
+// Model materials rendered dimmer so they read as lighter glyphs, e.g. windows vs. body
+const DIMMED_MATERIALS = new Set(['GLASS']);
+const DIMMED_BRIGHTNESS = 0.3;
+const MIN_COVERAGE = 0.35; // fraction of a cell the geometry must cover to draw a glyph
+const DISSOLVE_EDGE = 0.12; // width of the scrambled band at the dissolve front
+
+interface GalleryItem {
+  object: THREE.Object3D;
+  // Torus knot tumbles freely; models spin upright and rock within MODEL_ROCK
+  tumble: boolean;
+  // Time this item has been animated, used to drive the rocking
+  age: number;
+}
 
 interface MouseState {
   x: number;
@@ -44,10 +77,9 @@ export default function AsciiTorusKnot() {
     // Three.js setup - off-screen WebGL renderer
     const renderer = new THREE.WebGLRenderer({ 
       alpha: true, 
-      antialias: false,
+      antialias: true,
       powerPreference: 'high-performance'
     });
-    renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
@@ -73,6 +105,105 @@ export default function AsciiTorusKnot() {
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
+    // Same normal shading, scaled down so glyph selection picks sparser characters
+    const dimmedMaterial = new THREE.ShaderMaterial({
+      uniforms: { brightness: { value: DIMMED_BRIGHTNESS } },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float brightness;
+        varying vec3 vNormal;
+        void main() {
+          // Flip back-facing normals so the glass shades the same from inside and out
+          vec3 normal = normalize(vNormal) * (gl_FrontFacing ? 1.0 : -1.0);
+          gl_FragColor = vec4((normal * 0.5 + 0.5) * brightness, 1.0);
+        }
+      `,
+      // The glass is a single-sided shell, so without this it vanishes when seen from behind
+      side: THREE.DoubleSide,
+    });
+
+    // Loaded models are scaled to match the torus knot's on-screen size
+    geometry.computeBoundingBox();
+    const torusSize = new THREE.Vector3();
+    geometry.boundingBox!.getSize(torusSize);
+    const targetSize = Math.max(torusSize.x, torusSize.y, torusSize.z);
+
+    const gallery: GalleryItem[] = [{ object: mesh, tumble: true, age: 0 }];
+    let activeIndex = 0;
+    let lastSwitch = 0;
+    let isDisposed = false;
+
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('/draco/');
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    // Center and normalize a loaded model inside a pivot so rotation happens around its middle
+    const createGalleryModel = (model: THREE.Object3D): THREE.Object3D => {
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const childMesh = child as THREE.Mesh;
+          const materials = Array.isArray(childMesh.material) ? childMesh.material : [childMesh.material];
+          const isDimmed = materials.some((m) => DIMMED_MATERIALS.has(m.name));
+          materials.forEach((m) => m.dispose());
+          childMesh.material = isDimmed ? dimmedMaterial : material;
+        }
+      });
+
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const scale = (targetSize * MODEL_SCALE) / Math.max(size.x, size.y, size.z);
+      model.position.sub(center);
+
+      const inner = new THREE.Group();
+      inner.add(model);
+      inner.scale.setScalar(scale);
+
+      const pivot = new THREE.Group();
+      pivot.add(inner);
+      pivot.rotation.x = MODEL_TILT_X;
+      pivot.visible = false;
+      scene.add(pivot);
+      return pivot;
+    };
+
+    const disposeObject = (object: THREE.Object3D) => {
+      object.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).geometry.dispose();
+        }
+      });
+    };
+
+    // Load models in order so the gallery sequence is deterministic
+    const loadedModels: (THREE.Object3D | null)[] = GALLERY_MODELS.map(() => null);
+    GALLERY_MODELS.forEach((url, i) => {
+      gltfLoader.load(
+        url,
+        (gltf) => {
+          if (isDisposed) {
+            disposeObject(gltf.scene);
+            return;
+          }
+          loadedModels[i] = createGalleryModel(gltf.scene);
+          // Append models that are ready, preserving order
+          gallery.length = 1;
+          loadedModels.forEach((object) => {
+            if (object) gallery.push({ object, tumble: false, age: 0 });
+          });
+        },
+        undefined,
+        (error) => console.error(`Failed to load gallery model ${url}`, error)
+      );
+    });
+
     // Add lighting for better depth perception
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(0.5, 0.8, 0.3);
@@ -82,8 +213,15 @@ export default function AsciiTorusKnot() {
     let animationFrame = 0;
     let lastTime = 0;
 
-    // Create an ImageData buffer to read from WebGL
-    let imageData: ImageData;
+    // Off-screen render is SAMPLES_PER_CELL x SAMPLES_PER_CELL pixels per glyph cell
+    let sampleWidth = 0;
+    let sampleHeight = 0;
+    let pixels = new Uint8Array(0);
+    // Per-cell averaged color and coverage (r, g, b, coverage) for the current and next gallery item
+    let currentCells = new Float32Array(0);
+    let nextCells = new Float32Array(0);
+    // Per-cell order in which the dissolve front passes over the grid (0-1)
+    let dissolveOrder = new Float32Array(0);
 
     const updateSize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -103,17 +241,20 @@ export default function AsciiTorusKnot() {
       columns = Math.ceil(width / glyphSize);
       rows = Math.ceil(height / glyphSize);
 
-      // Update renderer size
-      renderer.setSize(width, height, false);
-      
+      // Render only as many pixels as we sample, covering the full glyph grid
+      sampleWidth = columns * SAMPLES_PER_CELL;
+      sampleHeight = rows * SAMPLES_PER_CELL;
+      renderer.setSize(sampleWidth, sampleHeight, false);
+      pixels = new Uint8Array(sampleWidth * sampleHeight * 4);
+      currentCells = new Float32Array(columns * rows * 4);
+      nextCells = new Float32Array(columns * rows * 4);
+      buildDissolveOrder();
+
       // Adjust camera position based on screen size
       isMobile = width < 768;
       camera.position.z = isMobile ? 12 : 8;
-      camera.aspect = width / height;
+      camera.aspect = columns / rows;
       camera.updateProjectionMatrix();
-
-      // Create buffer for reading pixels
-      imageData = new ImageData(width, height);
     };
 
     // Smoothstep function (used for recovery animation)
@@ -141,22 +282,109 @@ export default function AsciiTorusKnot() {
       return (hash >>> 0) / 4294967296; // Normalize to 0-1
     };
 
+    // Blobby noise so the dissolve spreads in patches rather than uniform static
+    const buildDissolveOrder = () => {
+      const blobSize = 6; // in glyph cells
+      dissolveOrder = new Float32Array(columns * rows);
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < columns; x += 1) {
+          const gx = x / blobSize;
+          const gy = y / blobSize;
+          const x0 = Math.floor(gx);
+          const y0 = Math.floor(gy);
+          const fx = smoothstep(0, 1, gx - x0);
+          const fy = smoothstep(0, 1, gy - y0);
+          // Offset the lattice so it doesn't correlate with the per-cell hash
+          const n00 = hashCell(x0 + 1000, y0);
+          const n10 = hashCell(x0 + 1001, y0);
+          const n01 = hashCell(x0 + 1000, y0 + 1);
+          const n11 = hashCell(x0 + 1001, y0 + 1);
+          const top = n00 + (n10 - n00) * fx;
+          const bottom = n01 + (n11 - n01) * fx;
+          const blob = top + (bottom - top) * fy;
+          dissolveOrder[y * columns + x] = blob * 0.75 + hashCell(x, y) * 0.25;
+        }
+      }
+    };
+
+    // Render a single gallery item and average its pixels into per-cell color and coverage
+    const renderToCells = (item: GalleryItem, cells: Float32Array) => {
+      gallery.forEach((other) => {
+        other.object.visible = other === item;
+      });
+      renderer.render(scene, camera);
+
+      const gl = renderer.getContext();
+      gl.readPixels(0, 0, sampleWidth, sampleHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      const samplesPerCell = SAMPLES_PER_CELL * SAMPLES_PER_CELL;
+      for (let y = 0; y < rows; y += 1) {
+        // WebGL rows start at the bottom
+        const pixelRowStart = (rows - 1 - y) * SAMPLES_PER_CELL;
+        for (let x = 0; x < columns; x += 1) {
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let a = 0;
+          for (let sy = 0; sy < SAMPLES_PER_CELL; sy += 1) {
+            let index = ((pixelRowStart + sy) * sampleWidth + x * SAMPLES_PER_CELL) * 4;
+            for (let sx = 0; sx < SAMPLES_PER_CELL; sx += 1, index += 4) {
+              r += pixels[index];
+              g += pixels[index + 1];
+              b += pixels[index + 2];
+              a += pixels[index + 3];
+            }
+          }
+          // Pixels are premultiplied by alpha, so divide by total alpha to recover the surface color
+          const alphaScale = a > 0 ? 255 / a : 0;
+          const cellIndex = (y * columns + x) * 4;
+          cells[cellIndex] = r * alphaScale;
+          cells[cellIndex + 1] = g * alphaScale;
+          cells[cellIndex + 2] = b * alphaScale;
+          cells[cellIndex + 3] = a / (255 * samplesPerCell);
+        }
+      }
+    };
+
     const render = (time: number) => {
       const deltaTime = time - lastTime;
       lastTime = time;
 
-      // Rotate the torus knot (slower)
-      const rotationSpeed = 0.0003;
-      mesh.rotation.y += rotationSpeed * deltaTime;
-      mesh.rotation.x += rotationSpeed * 0.3 * deltaTime;
+      // Advance the gallery once the current item's time is up
+      if (lastSwitch === 0) lastSwitch = time;
+      let elapsed = time - lastSwitch;
+      if (elapsed >= GALLERY_INTERVAL_MS) {
+        activeIndex = (activeIndex + 1) % gallery.length;
+        lastSwitch = time;
+        elapsed = 0;
+      }
+      const activeItem = gallery[activeIndex] ?? gallery[0];
+      // In the last TRANSITION_MS of each slot, dissolve into the next item
+      const transitionStart = GALLERY_INTERVAL_MS - TRANSITION_MS;
+      const nextItem =
+        gallery.length > 1 && elapsed > transitionStart
+          ? gallery[(activeIndex + 1) % gallery.length]
+          : null;
+      // Front sweeps past both ends so every cell starts fully old and ends fully new
+      const dissolveFront = nextItem
+        ? smoothstep(transitionStart, GALLERY_INTERVAL_MS, elapsed) * (1 + 2 * DISSOLVE_EDGE) - DISSOLVE_EDGE
+        : 0;
 
-      // Render 3D scene to WebGL
-      renderer.render(scene, camera);
+      [activeItem, nextItem].forEach((item) => {
+        if (!item) return;
+        item.age += deltaTime;
+        item.object.rotation.y += SPIN_SPEED * deltaTime;
+        if (item.tumble) {
+          item.object.rotation.x += SPIN_SPEED * 0.3 * deltaTime;
+        } else {
+          const phase = item.age * Math.PI * 2;
+          item.object.rotation.x = MODEL_TILT_X + MODEL_ROCK.x * Math.sin(phase / MODEL_ROCK_PERIOD_MS.x);
+          item.object.rotation.z = MODEL_ROCK.z * Math.sin(phase / MODEL_ROCK_PERIOD_MS.z);
+        }
+      });
 
-      // Read pixels from WebGL renderer
-      const gl = renderer.getContext();
-      const pixels = new Uint8Array(width * height * 4);
-      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      renderToCells(activeItem, currentCells);
+      if (nextItem) renderToCells(nextItem, nextCells);
 
       // Clear canvas
       context.clearRect(0, 0, width, height);
@@ -181,17 +409,45 @@ export default function AsciiTorusKnot() {
           const screenX = Math.floor(x * glyphSize + glyphSize / 2);
           const screenY = Math.floor(y * glyphSize + glyphSize / 2);
 
-          // Sample pixel from WebGL render (flip Y coordinate)
-          const pixelY = height - 1 - screenY;
-          const pixelIndex = (pixelY * width + screenX) * 4;
-          
-          const r = pixels[pixelIndex];
-          const g = pixels[pixelIndex + 1];
-          const b = pixels[pixelIndex + 2];
-          const a = pixels[pixelIndex + 3];
+          const cellIndex = (y * columns + x) * 4;
+          let r = currentCells[cellIndex];
+          let g = currentCells[cellIndex + 1];
+          let b = currentCells[cellIndex + 2];
+          let coverage = currentCells[cellIndex + 3];
+          let scrambledGlyph: string | null = null;
+
+          if (nextItem) {
+            const distanceToFront = dissolveOrder[y * columns + x] - dissolveFront;
+            const nextCoverage = nextCells[cellIndex + 3];
+            if (distanceToFront < -DISSOLVE_EDGE) {
+              // Front has passed: show the next item
+              r = nextCells[cellIndex];
+              g = nextCells[cellIndex + 1];
+              b = nextCells[cellIndex + 2];
+              coverage = nextCoverage;
+            } else if (distanceToFront <= DISSOLVE_EDGE) {
+              // On the front: blend both shapes and scramble the glyph
+              const mix = 0.5 - distanceToFront / (2 * DISSOLVE_EDGE);
+              if (coverage < MIN_COVERAGE) {
+                r = nextCells[cellIndex];
+                g = nextCells[cellIndex + 1];
+                b = nextCells[cellIndex + 2];
+              } else if (nextCoverage >= MIN_COVERAGE) {
+                r += (nextCells[cellIndex] - r) * mix;
+                g += (nextCells[cellIndex + 1] - g) * mix;
+                b += (nextCells[cellIndex + 2] - b) * mix;
+              }
+              coverage = Math.max(coverage, nextCoverage);
+              const flicker = Math.floor(time / 70);
+              scrambledGlyph = GLYPHS[1 + Math.floor(hashCell(x + flicker, y) * (GLYPHS.length - 1))];
+            }
+          }
 
           // Skip if no geometry at this position
-          if (a < 10) continue;
+          if (coverage < MIN_COVERAGE) continue;
+          r = Math.round(r);
+          g = Math.round(g);
+          b = Math.round(b);
 
           // Calculate brightness for glyph selection
           const brightness = getBrightness(r, g, b);
@@ -199,7 +455,7 @@ export default function AsciiTorusKnot() {
             GLYPHS.length - 1,
             Math.max(0, Math.floor(brightness * GLYPHS.length))
           );
-          const glyph = GLYPHS[glyphIndex];
+          const glyph = scrambledGlyph ?? GLYPHS[glyphIndex];
 
           // Calculate mouse dissolution effect (skip on mobile)
           let opacity = 1;
@@ -347,8 +603,12 @@ export default function AsciiTorusKnot() {
       // Always try to remove mouse listeners (safe even if not added)
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
+      isDisposed = true;
       geometry.dispose();
+      loadedModels.forEach((object) => object && disposeObject(object));
+      dracoLoader.dispose();
       material.dispose();
+      dimmedMaterial.dispose();
       renderer.dispose();
     };
   }, []);
