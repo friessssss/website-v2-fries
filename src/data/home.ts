@@ -42,18 +42,25 @@ export const projectDeck = [
 
 export const workHistory = [
   {
-    year: '2024 - Present',
-    title: 'Hardware Software Integration Engineer',
+    year: '2026 - Present',
+    title: 'Senior Hardware Software Integration Engineer',
     company: 'Lightship',
-    description: 'Developed complete diagnostic tooling for Lightship\'s fleet of vehicles. Included a custom Linux kernel, CAN bus drivers, and a web-based diagnostic interface. Learned Ins and Outs of the complete vehicle stack in order to effectively troubleshoot and repair vehicles.',
-    technologies: ['Python', 'Linux Development', 'CAN', 'Diagnostics', 'Jack of all trades'],
+    description: 'Architected and built ShipLine, Lightship\'s end-of-line manufacturing test platform, working with manufacturing to turn their pain points into high-value station tests. Redesigned the VCU Linux image with RAUC A/B OTA updates, and root-caused fleet WiFi/BT outages down to driver and firmware defects.',
+    technologies: ['Embedded Linux', 'FastAPI', 'PostgreSQL', 'HIL', 'Root Cause Analysis'],
   },
   {
-    year: '2022 - 2024',
-    title: 'Group Engineer',
+    year: '2024 - 2026',
+    title: 'Hardware Software Integration Engineer',
+    company: 'Lightship',
+    description: 'Built the cloud CAN telemetry pipeline and the internal diagnostic tools engineering and production use every day. Founding member of the vehicle triage team across 1,000+ vehicle issues, and led a 21-day telematics supplier transition.',
+    technologies: ['Python', 'CAN', 'AWS', 'Diagnostics', 'Jack of all trades'],
+  },
+  {
+    year: '2021 - 2023',
+    title: 'Chassis Mechatronics Engineer',
     company: 'Schaeffler Group',
-    description: 'Developed control algorithims for steer by wire and force feedback systems. Wrote system requirements and specifications for Battery Management System to expand into new markets.',
-    technologies: ['MATLab', 'Swift', 'CAN', 'On-Road Testing', 'System Requirements'],
+    description: 'Modeled steering rack forces for steer-by-wire and wrote system requirements for a battery management system architecture. Supported prototype EV platforms, including the NAIAS 2023 demo vehicle.',
+    technologies: ['MATLAB', 'Steer-by-Wire', 'CAN', 'On-Road Testing', 'System Requirements'],
   },
 ];
 
@@ -72,6 +79,11 @@ export const contactLinks = [
     label: 'GitHub',
     href: 'https://github.com/friessssss',
     description: 'Some assorted projects.',
+  },
+  {
+    label: 'Resume',
+    href: '/Zach_Robertson_Resume_2026.pdf',
+    description: 'The one-page version.',
   },
 ];
 
