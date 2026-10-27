@@ -31,10 +31,6 @@ export default function ContactSection() {
     };
   }, []);
 
-  const emailLink = contactLinks.find((link) => link.label === 'Email');
-  const linkedInLink = contactLinks.find((link) => link.label === 'LinkedIn');
-  const githubLink = contactLinks.find((link) => link.label === 'GitHub');
-
   return (
     <div
       ref={sectionRef}
@@ -53,57 +49,26 @@ export default function ContactSection() {
           </h2>
           
           <div className="space-y-3 md:space-y-4 flex flex-col items-end">
-            {emailLink && (
-              <a
-                href={emailLink.href}
-                className="group block w-full md:w-auto"
-              >
-                <div className="px-4 py-3 md:px-8 md:py-4 border border-white/20 bg-white/5 rounded hover:bg-white/10 hover:border-white/40 transition-all duration-300 text-right">
-                  <div className="text-white/90 text-base md:text-lg font-light group-hover:text-white transition-colors">
-                    Email
+            {contactLinks.map((link) => {
+              const isExternal = link.href.startsWith('http') || link.href.endsWith('.pdf');
+              return (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  className="group block w-full md:w-auto"
+                >
+                  <div className="px-4 py-3 md:px-8 md:py-4 border border-white/20 bg-white/5 rounded hover:bg-white/10 hover:border-white/40 transition-all duration-300 text-right">
+                    <div className="text-white/90 text-base md:text-lg font-light group-hover:text-white transition-colors">
+                      {link.label}
+                    </div>
+                    <div className="text-white/50 text-xs md:text-sm mt-1 font-mono">
+                      {link.description}
+                    </div>
                   </div>
-                  <div className="text-white/50 text-xs md:text-sm mt-1 font-mono">
-                    {emailLink.description}
-                  </div>
-                </div>
-              </a>
-            )}
-            
-            {linkedInLink && (
-              <a
-                href={linkedInLink.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group block w-full md:w-auto"
-              >
-                <div className="px-4 py-3 md:px-8 md:py-4 border border-white/20 bg-white/5 rounded hover:bg-white/10 hover:border-white/40 transition-all duration-300 text-right">
-                  <div className="text-white/90 text-base md:text-lg font-light group-hover:text-white transition-colors">
-                    LinkedIn
-                  </div>
-                  <div className="text-white/50 text-xs md:text-sm mt-1 font-mono">
-                    {linkedInLink.description}
-                  </div>
-                </div>
-              </a>
-            )}
-            
-            {githubLink && (
-              <a
-                href={githubLink.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group block w-full md:w-auto"
-              >
-                <div className="px-4 py-3 md:px-8 md:py-4 border border-white/20 bg-white/5 rounded hover:bg-white/10 hover:border-white/40 transition-all duration-300 text-right">
-                  <div className="text-white/90 text-base md:text-lg font-light group-hover:text-white transition-colors">
-                    GitHub
-                  </div>
-                  <div className="text-white/50 text-xs md:text-sm mt-1 font-mono">
-                    {githubLink.description}
-                  </div>
-                </div>
-              </a>
-            )}
+                </a>
+              );
+            })}
           </div>
         </div>
       </div>

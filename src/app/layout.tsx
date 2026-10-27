@@ -16,9 +16,6 @@ export const metadata: Metadata = {
   title: 'Zach Robertson — Hardware & Software Integration',
   description:
     'Hardware/software integration engineer building immersive systems that bridge physical product, embedded firmware, and cloud orchestration.',
-  icons: {
-    icon: '/favicon.ico',
-  },
   openGraph: {
     title: 'Zach Robertson — Hardware & Software Integration',
     description:
