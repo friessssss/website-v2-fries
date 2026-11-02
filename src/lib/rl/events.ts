@@ -1,6 +1,6 @@
 import { ObjectId, type Db, type Filter } from 'mongodb';
 import { collections } from './db';
-import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch } from './matches';
+import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch, inferOurTeam } from './matches';
 import { normalizeName } from './normalize';
 import { addAlias, listPlayers, resolveActor } from './players';
 import { currentSessionId, resolveSessionId } from './sessions';
@@ -163,9 +163,6 @@ export async function ingestBatch(
     }
 
     const match = await ensureMatch(db, e.matchGuid, sessionId, occurredAt);
-    const ourTeam = match.ourTeam;
-
-    const resolve = (p: InGame) => resolveActor(roster, p, ourTeam);
     let type: EventType;
     let actorIn: InGame;
     let targetIn: InGame | undefined;
@@ -188,6 +185,13 @@ export async function ingestBatch(
         break;
     }
 
+    const ourTeam = await inferOurTeam(
+      db,
+      roster,
+      match,
+      [actorIn, targetIn, assisterIn].filter((p): p is InGame => p !== undefined),
+    );
+    const resolve = (p: InGame) => resolveActor(roster, p, ourTeam);
     const actor = resolve(actorIn);
     const t = await currentTrack();
     const doc: EventDoc = {
@@ -247,6 +251,20 @@ export async function recordManualGoal(db: Db, deps: Deps, actor: Actor): Promis
     throw new IngestError('unknown_player');
   }
   const now = deps.clock();
+  const sessionId = await resolveSessionId(db, now);
+  const { events } = collections(db);
+  // The helper already reported this goal: keep its event (the reverse of the merge in ingestBatch).
+  const helperGoal = await events.findOne(
+    {
+      type: 'goal',
+      source: 'helper',
+      actor,
+      sessionId,
+      occurredAt: { $gte: new Date(now.getTime() - MANUAL_MERGE_MS), $lte: now },
+    },
+    { sort: { occurredAt: -1 } },
+  );
+  if (helperGoal) return helperGoal;
   const np = await deps.nowPlaying();
   const doc: EventDoc = {
     type: 'goal',
@@ -254,11 +272,11 @@ export async function recordManualGoal(db: Db, deps: Deps, actor: Actor): Promis
     ...trackFields(np?.track),
     songResolved: np !== null,
     occurredAt: now,
-    sessionId: await resolveSessionId(db, now),
+    sessionId,
     source: 'manual',
     createdAt: now,
   };
-  const { insertedId } = await collections(db).events.insertOne(doc);
+  const { insertedId } = await events.insertOne(doc);
   return { ...doc, _id: insertedId };
 }
 
@@ -289,7 +307,16 @@ export async function patchEvent(
     actor?: Actor;
     target?: Actor;
     assister?: Actor;
-    song?: { trackId?: string; song: string; artist: string };
+    song?: {
+      trackId?: string;
+      song: string;
+      artist: string;
+      album?: string;
+      albumArt?: string;
+      playlist?: string;
+      playlistId?: string;
+      progressMs?: number;
+    };
   },
 ): Promise<EventDoc> {
   const roster = await listPlayers(db);
@@ -306,6 +333,12 @@ export async function patchEvent(
     $set.song = patch.song.song;
     $set.artist = patch.song.artist;
     $set.trackId = patch.song.trackId ?? null;
+    // The old track's details no longer apply to the corrected song.
+    $set.album = patch.song.album ?? null;
+    $set.albumArt = patch.song.albumArt ?? null;
+    $set.playlist = patch.song.playlist ?? null;
+    $set.playlistId = patch.song.playlistId ?? null;
+    $set.progressMs = patch.song.progressMs ?? null;
     $set.songResolved = true;
   }
   const { events } = collections(db);

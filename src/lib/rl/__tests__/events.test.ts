@@ -233,6 +233,46 @@ describe('events', () => {
     expect(await collections(db()).events.countDocuments()).toBe(2);
   });
 
+  it('a manual goal right after a helper goal for the same actor returns the helper goal', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [goal({ scorer: { name: 'Samdree', team: 0 } })], key);
+    const later = new Date(NOW.getTime() + 10000);
+    const ev = await recordManualGoal(db(), { ...deps, clock: () => later }, 'sam');
+    expect(ev.source).toBe('helper');
+    expect(await collections(db()).events.countDocuments()).toBe(1);
+  });
+
+  it('a manual goal 31s after a helper goal, or for another actor, is recorded', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [goal({ scorer: { name: 'Samdree', team: 0 } })], key);
+    await recordManualGoal(db(), { ...deps, clock: () => new Date(NOW.getTime() + 5000) }, 'zach');
+    await recordManualGoal(db(), { ...deps, clock: () => new Date(NOW.getTime() + 31000) }, 'sam');
+    expect(await collections(db()).events.countDocuments()).toBe(3);
+  });
+
+  it('sets ourTeam from the first stat event with a roster player when match_start is missing', async () => {
+    await seedPlayers(db());
+    const { deps, key } = setup(db);
+    const res = await send(deps, [
+      goal({ gameTime: 10, scorer: { name: 'Fries', team: 1 } }),
+      goal({ gameTime: 20, scorer: { name: 'xXRando', team: 1 } }),
+      goal({ gameTime: 30, scorer: { name: 'enemy', team: 0 } }),
+    ], key);
+    expect(res.map((r) => r.status)).toEqual(['recorded', 'recorded', 'recorded']);
+    const evs = await collections(db()).events.find({}).sort({ gameTime: 1 }).toArray();
+    expect(evs.map((e) => e.actor)).toEqual(['zach', 'teammate', 'opponent']);
+    expect((await collections(db()).matches.findOne({ guid: GUID }))!.ourTeam).toBe(1);
+  });
+
+  it('does not overwrite an ourTeam already set', async () => {
+    await withMatch(); // ourTeam 0
+    const { deps, key } = setup(db);
+    await send(deps, [goal({ scorer: { name: 'Fries', team: 1 } })], key);
+    expect((await collections(db()).matches.findOne({ guid: GUID }))!.ourTeam).toBe(0);
+  });
+
   it('recordManualGoal validates the actor', async () => {
     await seedPlayers(db());
     const { deps } = setup(db);
@@ -267,6 +307,19 @@ describe('events', () => {
     expect(patched).toMatchObject({ actor: 'zach', song: 'S', artist: 'A', trackId: 'x', songResolved: true });
     await deleteEvent(db(), ev._id!.toString());
     expect(await collections(db()).events.countDocuments()).toBe(0);
+  });
+
+  it('patchEvent song correction clears stale track fields', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    const [r] = await send(deps, [goal()], key);
+    const patched = await patchEvent(db(), r.id!, { song: { song: 'S', artist: 'A' } });
+    expect(patched).toMatchObject({
+      song: 'S', artist: 'A', trackId: null, album: null, albumArt: null,
+      playlist: null, playlistId: null, progressMs: null, songResolved: true,
+    });
+    const withAlbum = await patchEvent(db(), r.id!, { song: { song: 'S', artist: 'A', album: 'Alb', progressMs: 5 } });
+    expect(withAlbum).toMatchObject({ album: 'Alb', progressMs: 5, playlist: null });
   });
 
   it('patchEvent rejects unknown actor, target and assister', async () => {

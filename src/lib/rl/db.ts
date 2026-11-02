@@ -56,10 +56,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await Promise.all([
     c.players.createIndex({ slug: 1 }, { unique: true }),
     c.events.createIndex({ dedupeKey: 1 }, { unique: true, sparse: true }),
+    c.events.createIndex({ occurredAt: -1 }),
     c.events.createIndex({ sessionId: 1, occurredAt: -1 }),
     c.events.createIndex({ type: 1, actor: 1 }),
     c.events.createIndex({ matchGuid: 1 }),
     c.matches.createIndex({ guid: 1 }, { unique: true }),
+    c.apiKeys.createIndex({ hash: 1 }, { unique: true }),
+    c.pairingCodes.createIndex({ code: 1 }, { unique: true }),
     c.pairingCodes.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
   ]);
 }

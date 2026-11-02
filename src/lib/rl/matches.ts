@@ -44,6 +44,26 @@ function pickOurTeam(roster: PlayerDoc[], players: { name: string; team: number 
   return best === 0 || best === 1 ? best : undefined;
 }
 
+/**
+ * Sets ourTeam from the first roster player with a known team (spec section 4), for matches whose
+ * match_start was missed. Never overwrites a stored ourTeam. Returns the stored value.
+ */
+export async function inferOurTeam(
+  db: Db,
+  roster: PlayerDoc[],
+  match: MatchDoc,
+  players: { name: string; team?: number }[],
+): Promise<0 | 1 | undefined> {
+  if (match.ourTeam !== undefined) return match.ourTeam;
+  const ours = players.find(
+    (p) => (p.team === 0 || p.team === 1) && !['opponent', 'teammate'].includes(resolveActor(roster, p, undefined)),
+  );
+  if (!ours) return undefined;
+  const { matches } = collections(db);
+  await matches.updateOne({ guid: match.guid, ourTeam: { $exists: false } }, { $set: { ourTeam: ours.team as 0 | 1 } });
+  return (await matches.findOne({ guid: match.guid }, { projection: { ourTeam: 1 } }))?.ourTeam;
+}
+
 export async function applyMatchStart(
   db: Db,
   roster: PlayerDoc[],

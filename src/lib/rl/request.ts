@@ -125,6 +125,12 @@ export function optStr(v: unknown, field: string, max = 200): string | undefined
   return v === undefined ? undefined : str(v, field, max);
 }
 
+export function optNum(v: unknown, field: string): number | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new HttpError(400, `bad_${field}`);
+  return v;
+}
+
 const EVENT_TYPES: EventType[] = ['goal', 'assist', 'save', 'demo'];
 
 export function parseType(v: string | null): EventType | undefined {

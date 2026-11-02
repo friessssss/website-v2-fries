@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { deleteEvent, patchEvent } from '@/lib/rl/events';
-import { HttpError, getCtx, optStr, readJson, requireCookie, str, withErrors } from '@/lib/rl/request';
+import { HttpError, getCtx, optNum, optStr, readJson, requireCookie, str, withErrors } from '@/lib/rl/request';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,11 @@ export const PATCH = withErrors(async (req, { params }: Params) => {
       trackId: optStr(o.trackId, 'trackId', 64),
       song: str(o.song, 'song'),
       artist: typeof o.artist === 'string' ? o.artist.slice(0, 200) : '',
+      album: optStr(o.album, 'album'),
+      albumArt: optStr(o.albumArt, 'albumArt', 500),
+      playlist: optStr(o.playlist, 'playlist'),
+      playlistId: optStr(o.playlistId, 'playlistId', 64),
+      progressMs: optNum(o.progressMs, 'progressMs'),
     };
   }
   const event = await patchEvent(db, params.id, {

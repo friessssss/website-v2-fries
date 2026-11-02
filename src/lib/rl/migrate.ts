@@ -46,21 +46,22 @@ export async function migrateLegacy(db: Db): Promise<MigrateResult> {
     const key = normalizeName(g.player);
     const slug = key === 'opponent' ? 'opponent' : bySlugName.get(key);
     if (!slug && key !== 'opponent') unmapped.set(g.player, (unmapped.get(g.player) ?? 0) + 1);
-    const song = g.song ?? 'Unknown';
+    // Legacy 'Unknown' meant "nothing resolved": store it as null like new events.
+    const known = typeof g.song === 'string' && g.song !== 'Unknown';
     return {
       _id: g._id,
       type: 'goal',
       actor: slug ?? 'opponent',
       ...(slug ? {} : { actorInGame: g.player }),
-      song,
-      artist: g.artist ?? null,
+      song: known ? g.song : null,
+      artist: known ? g.artist ?? null : null,
       album: null,
       albumArt: null,
       trackId: null,
       progressMs: g.progress ?? null,
       playlist: g.playlist ?? null,
       playlistId: g.playlistId ?? null,
-      songResolved: song !== 'Unknown',
+      songResolved: known,
       occurredAt: at,
       sessionId,
       source: 'legacy',

@@ -50,7 +50,7 @@ describe('migrateLegacy', () => {
     await migrateLegacy(db);
     const events = await collections(db).events.find({}).sort({ occurredAt: 1 }).toArray();
     expect(events.map((e) => e.actor)).toEqual(['vandy', 'zach', 'opponent', 'opponent', 'ashton']);
-    expect(events[1].songResolved).toBe(false);
+    expect(events[1]).toMatchObject({ song: null, artist: null, songResolved: false });
     expect(events[0].songResolved).toBe(true);
     expect(events[3].actorInGame).toBe('Somebody Else');
     expect(events[2].actorInGame).toBeUndefined();
