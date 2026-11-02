@@ -112,10 +112,78 @@ describe('events', () => {
     await expect(send(deps, [{ kind: 'nope' } as never], key)).rejects.toBeInstanceOf(IngestError);
   });
 
-  it('ignores match lifecycle kinds', async () => {
+  it('match_start earlier in the batch sets ourTeam for later events', async () => {
+    await seedPlayers(db());
     const { deps, key } = setup(db);
-    const r = await send(deps, [{ kind: 'heartbeat', matchGuid: GUID, at: NOW.toISOString() }], key);
-    expect(r).toEqual([{ status: 'ignored' }]);
+    const start: HelperEvent = {
+      kind: 'match_start', matchGuid: GUID, at: NOW.toISOString(),
+      players: [{ name: 'Fries', team: 1 }, { name: 'xXRando', team: 1 }, { name: 'Other', team: 0 }],
+    };
+    const r = await send(deps, [start, goal({ scorer: { name: 'xXRando', team: 1 } })], key);
+    expect(r.map((x) => x.status)).toEqual(['recorded', 'recorded']);
+    expect((await collections(db()).events.findOne({}))!.actor).toBe('teammate');
+  });
+
+  it('heartbeat adds the track once and ignores when late or nothing playing', async () => {
+    await seedPlayers(db());
+    const { deps, nowPlaying, key } = setup(db);
+    const hb = (at = NOW): HelperEvent => ({ kind: 'heartbeat', matchGuid: GUID, at: at.toISOString() });
+    expect((await send(deps, [hb(), hb()], key)).map((x) => x.status)).toEqual(['recorded', 'duplicate']);
+    expect(nowPlaying).toHaveBeenCalledTimes(1);
+    const late = await send(deps, [hb(new Date(NOW.getTime() - 121000))], key);
+    expect(late).toEqual([{ status: 'ignored' }]);
+    expect(await collections(db()).events.countDocuments()).toBe(0);
+  });
+
+  it('match_end after late delay sets result without victorySong', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [{
+      kind: 'match_end', matchGuid: GUID, at: new Date(NOW.getTime() - 121000).toISOString(),
+      score: { '0': 3, '1': 1 },
+    }], key);
+    const m = await collections(db()).matches.findOne({ guid: GUID });
+    expect(m).toMatchObject({ result: 'win', ourScore: 3, theirScore: 1 });
+    expect(m!.victorySong).toBeUndefined();
+  });
+
+  it('rejects match_end with non-numeric score', async () => {
+    const { deps, key } = setup(db);
+    await expect(
+      send(deps, [{ kind: 'match_end', matchGuid: GUID, at: NOW.toISOString(), score: { '0': 'x' } } as never], key),
+    ).rejects.toMatchObject({ code: 'bad_event', index: 0 });
+  });
+
+  it('a throwing nowPlaying saves the event unresolved', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    deps.nowPlaying.mockRejectedValue(new Error('spotify down'));
+    const [r] = await send(deps, [goal()], key);
+    expect(r.status).toBe('recorded');
+    expect(await collections(db()).events.findOne({})).toMatchObject({ songResolved: false, song: null });
+  });
+
+  it('clamps negative lag to zero', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [goal({ at: new Date(NOW.getTime() + 5000).toISOString() })], key);
+    expect((await collections(db()).events.findOne({}))!.occurredAt).toEqual(NOW);
+  });
+
+  it('listEvents falls back to 50 for a non-finite limit', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [goal()], key);
+    expect(await listEvents(db(), { session: 'all', limit: Number.NaN })).toHaveLength(1);
+  });
+
+  it('unknown assister is stored and reassign repoints it', async () => {
+    await withMatch();
+    const { deps, key } = setup(db);
+    await send(deps, [goal({ assister: { name: 'Rando', team: 0 } })], key);
+    expect(await recentUnknownNames(db())).toEqual([{ name: 'Rando', count: 1 }]);
+    await reassign(db(), 'rando', 'mason');
+    expect(await collections(db()).events.findOne({})).toMatchObject({ assister: 'mason', assisterInGame: 'Rando' });
   });
 
   it('demo maps attacker and victim', async () => {

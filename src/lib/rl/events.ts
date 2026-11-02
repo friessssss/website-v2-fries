@@ -1,6 +1,6 @@
 import { ObjectId, type Db, type Filter } from 'mongodb';
 import { collections } from './db';
-import { ensureMatch } from './matches';
+import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch } from './matches';
 import { normalizeName } from './normalize';
 import { addAlias, listPlayers, resolveActor } from './players';
 import { currentSessionId, resolveSessionId } from './sessions';
@@ -78,7 +78,7 @@ function validEvent(e: unknown): e is HelperEvent {
     case 'heartbeat':
       return true;
     case 'match_end':
-      return isObj(e.score);
+      return isObj(e.score) && Number.isFinite(e.score['0']) && Number.isFinite(e.score['1']);
     default:
       return false;
   }
@@ -130,21 +130,38 @@ export async function ingestBatch(
 
   let track: Track | null | undefined; // undefined = not looked up yet
   const lookup = async () => {
-    if (track === undefined) track = (await deps.nowPlaying())?.track ?? null;
+    if (track === undefined) {
+      try {
+        track = (await deps.nowPlaying())?.track ?? null;
+      } catch {
+        track = null; // a failed lookup saves the event unresolved (spec section 5)
+      }
+    }
     return track;
   };
 
   const results: IngestResult[] = [];
   for (const e of body.events) {
-    if (e.kind === 'match_start' || e.kind === 'heartbeat' || e.kind === 'match_end') {
-      results.push({ status: 'ignored' }); // Task 7
-      continue;
-    }
-
-    const lagMs = sentAt - new Date(e.at).getTime();
+    const lagMs = Math.max(0, sentAt - new Date(e.at).getTime());
     const late = lagMs > LATE_MS;
     const occurredAt = new Date(receivedAt.getTime() - lagMs);
     const sessionId = await resolveSessionId(db, occurredAt);
+    const currentTrack = async () => (late ? null : lookup());
+    const lifecycle = { matchGuid: e.matchGuid, at: occurredAt, sessionId };
+
+    if (e.kind === 'match_start') {
+      results.push(await applyMatchStart(db, roster, { ...lifecycle, players: e.players }));
+      continue;
+    }
+    if (e.kind === 'heartbeat') {
+      results.push(await applyHeartbeat(db, currentTrack, lifecycle));
+      continue;
+    }
+    if (e.kind === 'match_end') {
+      results.push(await applyMatchEnd(db, currentTrack, { ...lifecycle, score: e.score as Record<'0' | '1', number> }));
+      continue;
+    }
+
     const match = await ensureMatch(db, e.matchGuid, sessionId, occurredAt);
     const ourTeam = match.ourTeam;
 
@@ -172,13 +189,13 @@ export async function ingestBatch(
     }
 
     const actor = resolve(actorIn);
-    const t = late ? null : await lookup();
+    const t = await currentTrack();
     const doc: EventDoc = {
       type,
       actor,
       actorInGame: actorIn.name,
       ...(targetIn && { target: resolve(targetIn), targetInGame: targetIn.name }),
-      ...(assisterIn && { assister: resolve(assisterIn) }),
+      ...(assisterIn && { assister: resolve(assisterIn), assisterInGame: assisterIn.name }),
       ...trackFields(t),
       songResolved: !late && t !== null,
       occurredAt,
@@ -308,13 +325,19 @@ export async function reassign(
   const name = normalizeName(inGameName);
   const { events } = collections(db);
   const candidates = await events
-    .find({ $or: [{ actorInGame: { $exists: true } }, { targetInGame: { $exists: true } }] })
+    .find({ $or: [
+        { actorInGame: { $exists: true } },
+        { targetInGame: { $exists: true } },
+        { assisterInGame: { $exists: true } },
+      ],
+    })
     .toArray();
   const ops = [];
   for (const ev of candidates) {
     const $set: Partial<EventDoc> = {};
     if (ev.actorInGame !== undefined && normalizeName(ev.actorInGame) === name) $set.actor = slug;
     if (ev.targetInGame !== undefined && normalizeName(ev.targetInGame) === name) $set.target = slug;
+    if (ev.assisterInGame !== undefined && normalizeName(ev.assisterInGame) === name) $set.assister = slug;
     if (Object.keys($set).length > 0) ops.push({ updateOne: { filter: { _id: ev._id }, update: { $set } } });
   }
   if (ops.length > 0) await events.bulkWrite(ops);
@@ -357,7 +380,8 @@ export async function listEvents(
       ],
     });
   }
-  const limit = Math.min(Math.max(Math.floor(q.limit ?? 50), 1), 200);
+  const requested = q.limit !== undefined && Number.isFinite(q.limit) ? q.limit : 50;
+  const limit = Math.min(Math.max(Math.floor(requested), 1), 200);
   return events
     .find(and.length > 0 ? { $and: and } : {})
     .sort({ occurredAt: -1, _id: -1 })
@@ -374,7 +398,11 @@ export async function recentUnknownNames(
   const docs = await collections(db)
     .events.find({
       occurredAt: { $gte: since },
-      $or: [{ actor: { $in: ['opponent', 'teammate'] } }, { target: { $in: ['opponent', 'teammate'] } }],
+      $or: [
+        { actor: { $in: ['opponent', 'teammate'] } },
+        { target: { $in: ['opponent', 'teammate'] } },
+        { assister: { $in: ['opponent', 'teammate'] } },
+      ],
     })
     .toArray();
   const counts = new Map<string, { name: string; count: number }>();
@@ -389,6 +417,7 @@ export async function recentUnknownNames(
   for (const d of docs) {
     if (unknown(d.actor)) bump(d.actorInGame);
     if (unknown(d.target)) bump(d.targetInGame);
+    if (unknown(d.assister)) bump(d.assisterInGame);
   }
   return Array.from(counts.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }

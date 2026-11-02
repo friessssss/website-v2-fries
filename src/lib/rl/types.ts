@@ -33,6 +33,7 @@ export interface EventDoc {
   target?: Actor;
   targetInGame?: string;
   assister?: Actor;
+  assisterInGame?: string;
   song: string | null;
   artist: string | null;
   album?: string | null;
