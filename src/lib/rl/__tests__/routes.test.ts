@@ -25,6 +25,7 @@ import { GET as eventsGET, POST as eventsPOST } from '@/app/api/rl/v1/events/rou
 import { DELETE as lastDELETE } from '@/app/api/rl/v1/events/last/route';
 import { PATCH as idPATCH, DELETE as idDELETE } from '@/app/api/rl/v1/events/[id]/route';
 import { POST as reassignPOST } from '@/app/api/rl/v1/events/reassign/route';
+import { GET as unknownNamesGET } from '@/app/api/rl/v1/unknown-names/route';
 import { POST as goalsPOST } from '@/app/api/rl/v1/goals/route';
 import { GET as nowGET } from '@/app/api/rl/v1/now-playing/route';
 import { GET as sessionsGET } from '@/app/api/rl/v1/sessions/route';
@@ -366,6 +367,30 @@ describe('rl v1 routes', () => {
       expect(ok.status).toBe(200);
       expect((await body(ok)).players.map((p: any) => p.slug)).toEqual(['a']);
       expect((await playersPUT(req('PUT', '/players', { cookie: COOKIE, body: { players: 'no' } }))).status).toBe(400);
+    });
+  });
+
+  describe('GET /unknown-names', () => {
+    it('requires a cookie, then lists recent unrecognised in-game names', async () => {
+      await collections(db()).events.insertOne({
+        type: 'demo',
+        actor: 'zach',
+        target: 'opponent',
+        targetInGame: 'xXRando',
+        song: null,
+        artist: null,
+        trackId: null,
+        songResolved: false,
+        occurredAt: new Date(NOW.getTime() - 60 * 60_000),
+        sessionId: '2026-11-01-1900',
+        source: 'helper',
+        createdAt: NOW,
+      });
+      const locked = await unknownNamesGET(req('GET', '/unknown-names'));
+      expect(locked.status).toBe(401);
+      const res = await unknownNamesGET(req('GET', '/unknown-names', { cookie: COOKIE }));
+      expect(res.status).toBe(200);
+      expect((await body(res)).names).toEqual([{ name: 'xXRando', count: 1 }]);
     });
   });
 
