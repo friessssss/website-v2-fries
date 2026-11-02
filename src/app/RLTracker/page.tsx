@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import GlyphField from '@/components/rl/GlyphField';
 import GoalButtons from '@/components/rl/GoalButtons';
@@ -17,6 +18,11 @@ import { usePoll } from '@/components/rl/useRlApi';
 import { useUnlocked } from '@/components/rl/useUnlocked';
 
 const POLL_MS = 5000;
+
+/** "Ashton", "Ashton and Sam", "Ashton, Sam and Zach". */
+function listNames(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
 const EMPTY_TONIGHT = "No goals yet tonight. They'll show up here as soon as someone scores.";
 
 export default function RLTrackerPage() {
@@ -29,10 +35,12 @@ export default function RLTrackerPage() {
   const helpers = usePoll<HelperSummary>('/api/rl/v1/helpers', 15000);
   const roster = usePoll<{ players: Player[] }>('/api/rl/v1/players', 60000);
   const sessions = usePoll<{ sessions: SessionSummary[] }>('/api/rl/v1/sessions', 60000);
+  const spotify = usePoll<{ needsRelink: string[]; linked: number }>('/api/rl/v1/spotify/status', 60000);
   const { unlocked } = useUnlocked();
   const highlight = useNewGoalHighlight(events.data?.events, session);
 
   const players = roster.data?.players;
+  const relink = spotify.data?.needsRelink ?? [];
   const tonight = session === 'current';
   const label = tonight ? 'TONIGHT' : sessionDay(session).toUpperCase();
   const s = stats.data;
@@ -60,6 +68,14 @@ export default function RLTrackerPage() {
           totalGoals={s ? s.goalsFor + s.goalsAgainst : null}
           label={label}
         />
+        {relink.length > 0 && (
+          <p role="status" className="text-center font-mono text-xs text-ink-70">
+            Spotify for {listNames(relink)} {relink.length === 1 ? 'needs' : 'need'} relinking.{' '}
+            <Link href="/RLTracker/settings#rl-spotify" className="rl-focus text-ink-90 underline underline-offset-4 hover:text-ink">
+              Open settings to relink.
+            </Link>
+          </p>
+        )}
         {stats.error && (
           <p role="status" className="text-center font-mono text-xs text-ink-70">
             Can&apos;t reach the tracker right now. Retrying every 5 s.

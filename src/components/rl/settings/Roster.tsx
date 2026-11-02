@@ -147,6 +147,7 @@ export default function Roster({
     if (!name) return setAddError('Enter a display name.');
     if (!slug) return setAddError('Use at least one letter or number in the name.');
     if (slug.length > 40) return setAddError('That name is too long.');
+    if (slug === 'opponent' || slug === 'teammate') return setAddError('Opponent and Teammate are taken. Pick another name.');
     if (rows?.some((r) => r.slug === slug)) return setAddError("There's already a player with that name. Pick another.");
     touch([...(rows ?? []), { slug, displayName: name, aliases: newAliases }]);
     setNewName('');
@@ -175,6 +176,10 @@ export default function Roster({
       onChanged();
     } else if (res.data?.error === 'duplicate_alias') {
       setMessage("Two players can't share an in-game name.");
+    } else if (res.data?.error === 'duplicate_slug') {
+      setMessage('Two players have the same name. Rename one, then save.');
+    } else if (res.data?.error === 'bad_slug') {
+      setMessage("One player's name can't be used. Use letters and numbers, and not Opponent or Teammate.");
     } else {
       setMessage("The roster didn't save. Try again.");
     }

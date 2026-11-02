@@ -54,6 +54,7 @@ export default function Shortcuts({
 
   const key = created?.apiKey ?? '<key>';
   const url = `${origin}/api/rl/v1/goals?key=${key}`;
+  const undoUrl = `${origin}/api/rl/v1/events/last?key=${key}`;
   const targets = [
     ...(players ?? []).map((p) => ({ slug: p.slug, name: p.displayName, opp: false })),
     { slug: 'opponent', name: 'Opponent', opp: true },
@@ -134,6 +135,14 @@ export default function Shortcuts({
           </table>
         </div>
 
+        <div className="flex max-w-4xl flex-col gap-3">
+          <h3 className="border-b border-line-20 pb-2.5 font-mono text-xs text-ink-50">{'>'} undo url</h3>
+          <p className="text-ink-70">
+            Send a DELETE to this URL to undo the last goal, for example from a Stream Deck undo button. It needs no body.
+          </p>
+          <CopyField value={undoUrl} label="undo URL" />
+        </div>
+
         <div className="grid max-w-4xl gap-8 md:grid-cols-2">
           <div className="flex flex-col gap-3">
             <h3 className="font-mono text-xs text-ink-50">{'>'} stream deck</h3>
@@ -151,6 +160,10 @@ export default function Shortcuts({
                 <span>
                   Set the body to JSON, for example <span className={CODE}>{'{"player":"ashton"}'}</span>.
                 </span>
+              </li>
+              <li className={STEP}>
+                <span className={NUM}>04</span>
+                <span>For an undo button, set the method to DELETE and paste the undo URL.</span>
               </li>
             </ol>
           </div>

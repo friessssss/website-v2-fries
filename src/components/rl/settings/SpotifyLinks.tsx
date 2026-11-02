@@ -66,7 +66,7 @@ function PlayerRow({
   } else if (account.status === 'needs_relink') {
     status = (
       <>
-        <span className="text-sm text-danger">Needs relinking</span>
+        <span className="text-sm text-ink-90">Needs relinking</span>
         <a href={connectHref(player.slug)} aria-label={`Relink Spotify for ${player.displayName}`} className={BUTTON}>
           Relink
         </a>
