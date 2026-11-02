@@ -406,3 +406,116 @@ func TestFlushReturnsBufferedGoalOnce(t *testing.T) {
 	}
 	var _ app.Flusher = p
 }
+
+// songParser is a started parser whose song source returns *cur and counts calls.
+func songParser(t *testing.T, cur **model.Song, calls *int) *Parser {
+	t.Helper()
+	p := startedParser(t)
+	p.Song = func() *model.Song { *calls++; return *cur }
+	return p
+}
+
+func TestGoalCarriesSongFromGoalScoredArrival(t *testing.T) {
+	a, b := model.LocalSong("Uprising", "Muse"), model.LocalSong("Starlight", "Muse")
+	cur, calls := a, 0
+	p := songParser(t, &cur, &calls)
+	pl := []model.PlayerRef{{Name: "A", Team: 0}, {Name: "B", Team: 1}}
+
+	p.Feed(goalScored("G", "A", 0))
+	cur = b // the track changes before the clock reading flushes the goal
+	evs := p.Feed(updateState("G", 101, false, pl...))
+	if len(evs) != 1 || evs[0].Kind != "goal" || evs[0].Song != a {
+		t.Fatalf("goal song: %+v", evs)
+	}
+
+	// Same for a goal flushed at match end, by Flush and by a new guid.
+	cur = a
+	p.Feed(goalScored("G", "B", 1))
+	cur = b
+	evs = p.Feed(envelope("MatchEnded", map[string]any{"MatchGuid": "G", "WinnerTeamNum": 1}))
+	if evs[0].Kind != "goal" || evs[0].Song != a || evs[1].Kind != "match_end" || evs[1].Song != nil {
+		t.Fatalf("match end flush: %+v", evs)
+	}
+
+	p = songParser(t, &cur, &calls)
+	cur = a
+	p.Feed(goalScored("G", "A", 0))
+	cur = b
+	if evs := p.Flush(); len(evs) != 1 || evs[0].Song != a {
+		t.Fatalf("Flush: %+v", evs)
+	}
+
+	p = songParser(t, &cur, &calls)
+	cur = a
+	p.Feed(goalScored("G", "A", 0))
+	cur = b
+	if evs := p.Feed(envelope("MatchCreated", map[string]any{"MatchGuid": "H"})); len(evs) != 1 || evs[0].Song != a {
+		t.Fatalf("new guid flush: %+v", evs)
+	}
+}
+
+func TestStatEventsCarrySong(t *testing.T) {
+	s := model.LocalSong("Uprising", "Muse")
+	cur, calls := s, 0
+	p := songParser(t, &cur, &calls)
+	a := map[string]any{"Name": "A", "TeamNum": 0}
+	b := map[string]any{"Name": "B", "TeamNum": 1}
+	var evs []model.Event
+	evs = append(evs, p.Feed(statfeed("G", "Assist", a, nil))...)
+	evs = append(evs, p.Feed(statfeed("G", "Save", a, nil))...)
+	evs = append(evs, p.Feed(statfeed("G", "EpicSave", b, nil))...)
+	evs = append(evs, p.Feed(statfeed("G", "Demolish", a, b))...)
+	if !reflect.DeepEqual(kinds(evs), []string{"assist", "save", "save", "demo"}) {
+		t.Fatalf("kinds %v", kinds(evs))
+	}
+	for _, e := range evs {
+		if e.Song != s {
+			t.Fatalf("%s song %+v", e.Kind, e.Song)
+		}
+	}
+
+	cur = nil // nothing playing
+	p.Feed(envelope("ClockUpdatedSeconds", map[string]any{"MatchGuid": "G", "TimeSeconds": 200}))
+	evs = p.Feed(statfeed("G", "Save", b, nil))
+	if len(evs) != 1 || evs[0].Song != nil {
+		t.Fatalf("nothing playing: %+v", evs)
+	}
+}
+
+func TestSongReadOnlyForStatMessages(t *testing.T) {
+	cur, calls := model.LocalSong("Uprising", "Muse"), 0
+	p := songParser(t, &cur, &calls)
+	pl := []model.PlayerRef{{Name: "A", Team: 0}, {Name: "B", Team: 1}}
+	for c := 250.0; c > 240; c-- {
+		p.Feed(updateState("G", c, false, pl...)) // clock ticks must not hit the media source
+	}
+	p.Feed(statfeed("G", "Shot", map[string]any{"Name": "A", "TeamNum": 0}, nil))
+	p.Feed(envelope("GoalReplayStart", map[string]any{"MatchGuid": "G"}))
+	p.Feed(goalScored("G", "", 0)) // replay repeat
+	p.Feed(envelope("GoalReplayEnd", map[string]any{"MatchGuid": "G"}))
+	if calls != 0 {
+		t.Fatalf("song read %d times for non-stat messages", calls)
+	}
+	evs := p.Feed(envelope("MatchEnded", map[string]any{"MatchGuid": "G", "WinnerTeamNum": 0}))
+	if len(evs) != 1 || evs[0].Song != nil || calls != 0 {
+		t.Fatalf("match_end: %+v (calls %d)", evs, calls)
+	}
+}
+
+func TestNoSongSourceMeansNoSong(t *testing.T) {
+	p := startedParser(t) // Song is nil, as in --replay
+	p.Feed(goalScored("G", "A", 0))
+	evs := p.Flush()
+	evs = append(evs, p.Feed(statfeed("G", "Save", map[string]any{"Name": "A", "TeamNum": 0}, nil))...)
+	for _, e := range evs {
+		if e.Song != nil {
+			t.Fatalf("%s song %+v", e.Kind, e.Song)
+		}
+	}
+	if NewSongParser(nil).(*Parser).Song != nil {
+		t.Fatal("NewSongParser(nil) set a song source")
+	}
+	if NewParser().(*Parser).Song != nil {
+		t.Fatal("NewParser set a song source")
+	}
+}
