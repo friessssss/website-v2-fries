@@ -20,10 +20,15 @@ func AskRLFolder() (string, bool)    { return "", false }
 func Info(msg string)                {}
 func Toast(title, body string)       {}
 
+// ToastLogf, if set, receives toast delivery errors.
+var ToastLogf func(format string, args ...any)
+
 // Tray is a no-op on non-Windows platforms.
 type Tray struct {
 	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnQuit func()
 }
 
+func (t *Tray) SetToastsOn(on bool)                     {}
+func (t *Tray) ToastsOn() bool                          { return true }
 func (t *Tray) Run()                                    {}
 func (t *Tray) SetState(s app.State, statusText string) {}

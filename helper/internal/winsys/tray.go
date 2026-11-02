@@ -3,6 +3,8 @@
 package winsys
 
 import (
+	"sync/atomic"
+
 	"fyne.io/systray"
 
 	"github.com/friessssss/website-v2-fries/helper/internal/app"
@@ -14,8 +16,21 @@ import (
 type Tray struct {
 	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnQuit func()
 
-	states chan stateMsg
+	states  mailbox[stateMsg]
+	refresh mailbox[struct{}]
+	// toastsOff is inverted so the zero value means toasts are on.
+	toastsOff atomic.Bool
 }
+
+// SetToastsOn lets the app own the toast setting; the menu label follows it.
+// Safe to call from any goroutine at any time.
+func (t *Tray) SetToastsOn(on bool) {
+	t.toastsOff.Store(!on)
+	t.refresh.Put(struct{}{})
+}
+
+// ToastsOn reports the current toast setting.
+func (t *Tray) ToastsOn() bool { return !t.toastsOff.Load() }
 
 type stateMsg struct {
 	s    app.State
@@ -35,39 +50,22 @@ func iconFor(s app.State) []byte {
 	}
 }
 
-func (t *Tray) init() {
-	if t.states == nil {
-		t.states = make(chan stateMsg, 1)
-	}
-}
-
 // SetState never blocks and never calls back into the app: it stores the latest
-// state in a one-slot channel (replacing an unread value) for the tray goroutine.
+// state in a one-slot mailbox for the tray goroutine.
 func (t *Tray) SetState(s app.State, statusText string) {
-	t.init()
-	m := stateMsg{s, statusText}
-	for {
-		select {
-		case t.states <- m:
-			return
-		default:
-		}
-		select {
-		case <-t.states: // drop the stale value
-		default:
-		}
-	}
+	t.states.Put(stateMsg{s, statusText})
 }
 
+// call runs a menu callback on its own goroutine so a blocking handler (a
+// dialog, say) cannot stall state updates or other menu clicks.
 func call(f func()) {
 	if f != nil {
-		f()
+		go f()
 	}
 }
 
 // Run blocks until the tray exits (Quit clicked or systray.Quit).
 func (t *Tray) Run() {
-	t.init()
 	systray.Run(t.onReady, func() {})
 }
 
@@ -85,11 +83,18 @@ func (t *Tray) onReady() {
 	systray.AddSeparator()
 	quit := systray.AddMenuItem("Quit", "")
 
-	toastsOn := true
+	setToastTitle := func() {
+		if t.ToastsOn() {
+			toasts.SetTitle("Toasts on")
+		} else {
+			toasts.SetTitle("Toasts off")
+		}
+	}
+	setToastTitle()
 	go func() {
 		for {
 			select {
-			case m := <-t.states:
+			case m := <-t.states.C():
 				systray.SetIcon(iconFor(m.s))
 				systray.SetTooltip("RL Goal Tracker: " + m.text)
 				status.SetTitle(m.text)
@@ -98,15 +103,13 @@ func (t *Tray) onReady() {
 				} else {
 					pause.SetTitle("Pause tracking")
 				}
+			case <-t.refresh.C():
+				setToastTitle()
 			case <-open.ClickedCh:
 				call(t.OnOpen)
 			case <-toasts.ClickedCh:
-				toastsOn = !toastsOn
-				if toastsOn {
-					toasts.SetTitle("Toasts on")
-				} else {
-					toasts.SetTitle("Toasts off")
-				}
+				t.toastsOff.Store(t.ToastsOn())
+				setToastTitle()
 				call(t.OnToggleToasts)
 			case <-pause.ClickedCh:
 				call(t.OnTogglePause)
