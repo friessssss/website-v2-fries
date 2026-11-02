@@ -106,8 +106,7 @@ func requestManager() *control.GlobalSystemMediaTransportControlsSessionManager 
 }
 
 // readManager picks the song with PickSession. Media properties are only
-// fetched for the sessions PickSession can choose (playing Spotify sessions
-// and the current one).
+// fetched for playing Spotify sessions, the only ones PickSession accepts.
 func readManager(mgr *control.GlobalSystemMediaTransportControlsSessionManager) (string, string, bool, error) {
 	cur, err := mgr.GetCurrentSession()
 	if err != nil {
@@ -115,7 +114,7 @@ func readManager(mgr *control.GlobalSystemMediaTransportControlsSessionManager) 
 	}
 	var current *Session
 	if cur != nil {
-		s := readSession(cur, true)
+		s := readSession(cur)
 		cur.Release()
 		current = &s
 		if current.isSpotify() {
@@ -133,7 +132,7 @@ func readManager(mgr *control.GlobalSystemMediaTransportControlsSessionManager) 
 					continue
 				}
 				s := (*control.GlobalSystemMediaTransportControlsSession)(p)
-				all = append(all, readSession(s, false))
+				all = append(all, readSession(s))
 				s.Release()
 			}
 		}
@@ -144,9 +143,8 @@ func readManager(mgr *control.GlobalSystemMediaTransportControlsSessionManager) 
 }
 
 // readSession reads the app id and playback status, and the title and
-// artist when the session is playing and is either the current one or
-// Spotify's.
-func readSession(s *control.GlobalSystemMediaTransportControlsSession, isCurrent bool) Session {
+// artist when it is a playing Spotify session.
+func readSession(s *control.GlobalSystemMediaTransportControlsSession) Session {
 	var out Session
 	out.AppID, _ = s.GetSourceAppUserModelId()
 	if info, err := s.GetPlaybackInfo(); err == nil && info != nil {
@@ -154,7 +152,7 @@ func readSession(s *control.GlobalSystemMediaTransportControlsSession, isCurrent
 		out.Playing = err == nil && st == control.GlobalSystemMediaTransportControlsSessionPlaybackStatusPlaying
 		info.Release()
 	}
-	if !out.Playing || !(isCurrent || out.isSpotify()) {
+	if !out.Playing || !out.isSpotify() {
 		return out
 	}
 	op, err := s.TryGetMediaPropertiesAsync()

@@ -80,8 +80,9 @@ func (s *Session) song() (string, string, bool) {
 	return s.Title, s.Artist, true
 }
 
-// PickSession prefers a playing Spotify session (current or not), else the
-// current session if it is playing.
+// PickSession returns the song of a playing Spotify session (the current
+// session first, then any other). Other apps' sessions (browsers, video
+// players, podcasts apps) never count, even when playing.
 func PickSession(current *Session, all []Session) (title, artist string, ok bool) {
 	if current != nil && current.isSpotify() {
 		if title, artist, ok := current.song(); ok {
@@ -95,7 +96,7 @@ func PickSession(current *Session, all []Session) (title, artist string, ok bool
 			}
 		}
 	}
-	return current.song()
+	return "", "", false
 }
 
 // Cache timing.

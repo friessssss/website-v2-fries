@@ -3,7 +3,7 @@
 package media
 
 // NowPlaying returns the track playing on this PC: from the System Media
-// Transport Controls (Spotify's session preferred) and, when that finds
+// Transport Controls (Spotify sessions only) and, when that finds
 // nothing, from the Spotify window title. It may block on OS calls; callers
 // on a hot path use a Cache.
 func NowPlaying() (title, artist string, ok bool) { return nowPlaying() }

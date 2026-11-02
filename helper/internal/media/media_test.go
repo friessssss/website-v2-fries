@@ -71,11 +71,15 @@ func TestPickSession(t *testing.T) {
 	}{
 		{"spotify preferred over current", &browser, []Session{browser, spotify}, "Uprising", "Muse", true},
 		{"store spotify app id", nil, []Session{browser, spotifyStore}, "Starlight", "Muse", true},
-		{"paused spotify falls back to current", &browser, []Session{pausedSpotify, browser}, "Some Video", "Channel", true},
+		// Only Spotify sessions count: another app's playing session never does.
+		{"paused spotify, playing browser", &browser, []Session{pausedSpotify, browser}, "", "", false},
+		{"current non-spotify playing", &browser, []Session{browser}, "", "", false},
+		{"current non-spotify playing, no list", &browser, nil, "", "", false},
 		{"current spotify", &spotify, []Session{spotify}, "Uprising", "Muse", true},
 		{"nothing playing", &pausedBrowser, []Session{pausedSpotify, pausedBrowser}, "", "", false},
 		{"no sessions", nil, nil, "", "", false},
-		{"playing but no title", &Session{AppID: "x", Playing: true}, nil, "", "", false},
+		{"playing spotify but no title", &Session{AppID: "Spotify.exe", Playing: true}, nil, "", "", false},
+		{"case-insensitive app id", nil, []Session{{AppID: "SPOTIFY.EXE", Playing: true, Title: "T", Artist: "A"}}, "T", "A", true},
 		{"other playing session that is not current is ignored", &pausedBrowser, []Session{pausedBrowser, {AppID: "vlc", Playing: true, Title: "t"}}, "", "", false},
 	}
 	for _, c := range cases {
