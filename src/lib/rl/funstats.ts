@@ -42,6 +42,9 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
   const events: EventDoc[] = empty ? [] : await c.events.find(filter).sort({ occurredAt: 1 }).toArray();
   const matches = empty ? [] : await c.matches.find(filter).toArray();
 
+  // Opponent/teammate are pooled buckets, not one player: individual records are roster-only.
+  const rosterSlugs = new Set(roster.map((p) => p.slug));
+
   const demos = events.filter((e) => e.type === 'demo');
 
   // Demo leaderboard: roster plus Opponent.
@@ -79,7 +82,7 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
   // Brick wall: most saves by one actor in one match.
   const saveGroups = new Map<string, { actor: Actor; matchGuid: string; saves: number; first: Date }>();
   for (const e of events) {
-    if (e.type !== 'save' || !e.matchGuid) continue;
+    if (e.type !== 'save' || !e.matchGuid || !rosterSlugs.has(e.actor)) continue;
     const k = `${e.actor}\u0000${e.matchGuid}`;
     const g = saveGroups.get(k) ?? { actor: e.actor, matchGuid: e.matchGuid, saves: 0, first: e.occurredAt };
     g.saves++;
@@ -102,8 +105,8 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
   const assistCounts = new Map<Actor, number>();
   const pairCounts = new Map<string, { assister: Actor; scorer: Actor; count: number }>();
   for (const e of events) {
-    if (e.type === 'assist') bump(assistCounts, e.actor);
-    if (e.type === 'goal' && e.assister) {
+    if (e.type === 'assist' && rosterSlugs.has(e.actor)) bump(assistCounts, e.actor);
+    if (e.type === 'goal' && e.assister && rosterSlugs.has(e.assister) && rosterSlugs.has(e.actor)) {
       const k = `${e.assister}\u0000${e.actor}`;
       const p = pairCounts.get(k) ?? { assister: e.assister, scorer: e.actor, count: 0 };
       p.count++;
@@ -147,7 +150,6 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
 
   // Night of the night: each roster player's best session by goals + assists + saves.
   const perSession = new Map<string, { total: number; last: number }>();
-  const rosterSlugs = new Set(roster.map((p) => p.slug));
   for (const e of events) {
     if (e.type === 'demo' || !rosterSlugs.has(e.actor)) continue;
     const k = `${e.actor}\u0000${e.sessionId}`;

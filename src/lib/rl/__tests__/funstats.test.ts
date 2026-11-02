@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { collections } from '../db';
 import { funStats } from '../funstats';
 import { NIGHT, EXTRA_SESSION_ID, seedMatches, seedNight } from './fixtures';
 import { useTestDb } from './testdb';
@@ -94,5 +95,26 @@ describe('funStats', () => {
     expect(none.brickWall).toBeNull();
     expect(none.playmaker).toEqual({ top: null, pair: null });
     expect(none.winRateBySong).toEqual([]);
+  });
+
+  it('individual records ignore pooled opponent/teammate buckets', async () => {
+    const db = getDb();
+    await seedNight(db);
+    await seedMatches(db);
+    const mk = (type: 'save' | 'assist' | 'goal', actor: string, min: number, extra: object = {}) => ({
+      type, actor, song: 'Song A', artist: 'Artist A', trackId: 'tA', songResolved: true,
+      occurredAt: new Date(Date.UTC(2026, 9, 31, 1, min)), sessionId: EXTRA_SESSION_ID,
+      source: 'helper' as const, createdAt: new Date(), ...extra,
+    });
+    await collections(db).events.insertMany([
+      ...[30, 31, 32, 33].map((m) => mk('save', 'opponent', m, { matchGuid: 'x1' })),
+      ...[34, 35, 36, 37, 38].map((m) => mk('assist', 'teammate', m)),
+      ...[40, 41, 42].map((m) => mk('goal', 'opponent', m, { assister: 'teammate' })),
+      ...[43, 44, 45].map((m) => mk('goal', 'teammate', m, { assister: 'opponent' })),
+    ]);
+    const f = await funStats(db, all, NIGHT.now);
+    expect(f.brickWall).toMatchObject({ actor: 'zach', saves: 3 });
+    expect(f.playmaker.top).toEqual({ actor: 'ashton', displayName: 'Ashton', count: 2 });
+    expect(f.playmaker.pair).toEqual({ assister: 'ashton', scorer: 'zach', count: 2 });
   });
 });
