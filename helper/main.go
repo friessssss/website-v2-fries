@@ -305,7 +305,9 @@ func run() int {
 	// 7. Self-update. Dev builds never update themselves. It starts from the
 	// tray's OnReady so its Restart (tray.Quit) can never run before tray.Run.
 	var relaunch atomic.Bool
-	var findMu sync.Mutex // one Find Rocket League / elevation pass at a time
+	// findMu serialises the startup notices + elevations (OnReady) and tray
+	// "Find Rocket League" passes; later clicks wait their turn.
+	var findMu sync.Mutex
 	var updater *setup.Updater
 	if exe != "" && !strings.Contains(version, "-dev") {
 		updater = &setup.Updater{
@@ -328,9 +330,11 @@ func run() int {
 		if updater != nil {
 			go updater.Loop(ctx)
 		}
-		setup.ShowNotices(notices, settings.Once, winsys.Info, logf)
-		findMu.Lock() // a tray "Find Rocket League" waits for this
+		// Held for the whole startup notice + elevation pass, so a tray
+		// "Find Rocket League" click waits for it instead of overlapping.
+		findMu.Lock()
 		defer findMu.Unlock()
+		setup.ShowNotices(notices, settings.Once, winsys.Info, logf)
 		setup.RunElevations(elevs, settings.Once, winsys.Info, logf)
 	}
 
@@ -346,9 +350,8 @@ func run() int {
 	}
 	tray.OnRepair = func() { ctl.Repair(ctx) }
 	tray.OnFindRL = func() {
-		if !findMu.TryLock() {
-			return
-		}
+		// Runs on its own goroutine (tray.call), so waiting is fine.
+		findMu.Lock()
 		defer findMu.Unlock()
 		found, ns, elevs := findAndEnable(true)
 		if !found {

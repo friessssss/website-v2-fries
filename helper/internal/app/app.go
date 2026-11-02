@@ -48,9 +48,11 @@ const (
 	HeartbeatEvery = 30 * time.Second
 	BackoffMax     = 60 * time.Second
 	BatchSize      = 50
-	// MaxRejectStreak consecutive single-event rejections mean the site, not
-	// the events, is at fault: the next one is kept and retried with backoff.
-	MaxRejectStreak = 5
+	// A rejected event is held at the queue head and retried with backoff
+	// (a site fault can answer 400 to everything). A held head event is dropped once it has been rejected on its own
+	// MaxRejectAttempts times, or continuously for MaxRejectHold.
+	MaxRejectAttempts = 10
+	MaxRejectHold     = 6 * time.Hour
 )
 
 // Stream is one live connection to the Stats API.
@@ -397,7 +399,12 @@ func (a *App) heartbeat(ctx context.Context) {
 func (a *App) flusher(ctx context.Context) {
 	backoff := FlushEvery
 	singles := 0 // events at the queue front still to be sent one at a time
-	rejects := 0 // consecutive single-event rejections
+	// The head event currently held after a 400/422, how often it was
+	// rejected on its own, and since when.
+	var holdKey string
+	var holdAttempts int
+	var holdSince time.Time
+	resetHold := func() { holdKey, holdAttempts, holdSince = "", 0, time.Time{} }
 	// retryLater marks the upload as failing and sleeps the current backoff.
 	retryLater := func() bool {
 		a.mu.Lock()
@@ -432,7 +439,7 @@ func (a *App) flusher(ctx context.Context) {
 		var rej api.ErrRejected
 		switch {
 		case err == nil:
-			rejects = 0
+			resetHold()
 			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
 				// The batch would be re-sent (the site dedupes); don't spin.
 				a.d.Logf("queue drop failed: %v", derr)
@@ -468,9 +475,20 @@ func (a *App) flusher(ctx context.Context) {
 			// One bad event must not discard the good ones: resend individually.
 			a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
 			singles = len(batch)
-		case errors.As(err, &rej) && rejects+1 < MaxRejectStreak:
-			rejects++
-			a.d.Logf("dropping event rejected by the site: %v", err)
+		case errors.As(err, &rej):
+			now := a.d.Now()
+			if k := eventKey(batch[0]); k != holdKey {
+				holdKey, holdAttempts, holdSince = k, 0, now
+			}
+			holdAttempts++
+			if holdAttempts < MaxRejectAttempts && now.Sub(holdSince) < MaxRejectHold {
+				a.d.Logf("event rejected by the site (attempt %d): %v; keeping it and backing off", holdAttempts, err)
+				if !retryLater() {
+					return
+				}
+				continue
+			}
+			a.d.Logf("dropping event rejected by the site %d times over %v: %v", holdAttempts, now.Sub(holdSince).Round(time.Second), err)
 			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
 				a.d.Logf("queue drop failed: %v", derr)
 				if !retryLater() {
@@ -478,18 +496,25 @@ func (a *App) flusher(ctx context.Context) {
 				}
 				continue
 			}
+			resetHold()
 			singles = max(singles-1, 0)
 			a.update()
 		default:
-			if errors.As(err, &rej) {
-				a.d.Logf("%d+ rejections in a row (%v): treating it as a site problem; keeping the event and backing off", MaxRejectStreak, err)
-			}
-			// ErrRetryable, a rejection streak, or anything unclassified.
+			// ErrRetryable or anything unclassified.
 			if !retryLater() {
 				return
 			}
 		}
 	}
+}
+
+// eventKey identifies a queued event (its JSON form).
+func eventKey(e model.Event) string {
+	b, err := json.Marshal(e)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func (a *App) notifyGoals(batch []model.Event, results []api.Result) {
