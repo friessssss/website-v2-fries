@@ -1,4 +1,5 @@
-import type { Db, ObjectId } from 'mongodb';
+import { ObjectId } from 'mongodb';
+import type { Db } from 'mongodb';
 import { collections } from './db';
 import { decryptSecret, encryptSecret } from './crypto';
 import type { SpotifyAccountDoc, Track } from './types';
@@ -182,8 +183,14 @@ export async function listAccounts(db: Db): Promise<SpotifyAccountDoc[]> {
   return collections(db).spotifyAccounts.find({}).sort({ createdAt: 1 }).toArray();
 }
 
-export async function unlinkAccount(db: Db, id: ObjectId): Promise<void> {
-  await collections(db).spotifyAccounts.deleteOne({ _id: id });
+/** Returns false when no account was removed (unknown or malformed id). */
+export async function unlinkAccount(db: Db, id: ObjectId | string): Promise<boolean> {
+  if (typeof id === 'string') {
+    if (!ObjectId.isValid(id)) return false;
+    id = new ObjectId(id);
+  }
+  const res = await collections(db).spotifyAccounts.deleteOne({ _id: id });
+  return res.deletedCount === 1;
 }
 
 // ---- now playing ----

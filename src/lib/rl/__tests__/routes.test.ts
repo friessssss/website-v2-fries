@@ -7,6 +7,10 @@ import { createApiKey, createPairingCode, unlockCookieValue } from '../auth';
 import { resetRateLimits } from '../ratelimit';
 import { seedPlayers } from '../players';
 import { setFetchForTests } from '../helper-release';
+import { hmac } from '../crypto';
+import { listAccounts } from '../spotify';
+import { setSpotifyClientForTests, signState } from '../spotify-link';
+import type { SpotifyClient } from '../spotify';
 import * as request from '@/lib/rl/request';
 
 vi.mock('@/lib/rl/request', async (orig) => ({
@@ -32,6 +36,10 @@ import { POST as codesPOST } from '@/app/api/rl/v1/pairing-codes/route';
 import { POST as pairPOST } from '@/app/api/rl/v1/pair/route';
 import { GET as keysGET, POST as keysPOST } from '@/app/api/rl/v1/keys/route';
 import { DELETE as keyDELETE } from '@/app/api/rl/v1/keys/[id]/route';
+import { GET as spotifyConnectGET } from '@/app/api/rl/v1/spotify/connect/route';
+import { GET as spotifyCallbackGET } from '@/app/api/rl/v1/spotify/callback/route';
+import { GET as spotifyGET } from '@/app/api/rl/v1/spotify/route';
+import { DELETE as spotifyDELETE } from '@/app/api/rl/v1/spotify/[id]/route';
 import { GET as helperGET } from '@/app/api/rl/v1/helper/latest/route';
 
 const PASS = 'test-passcode';
@@ -384,6 +392,122 @@ describe('rl v1 routes', () => {
       expect(await body(res)).toEqual({ error: 'unavailable' });
       expect(spy).toHaveBeenCalled();
       spy.mockRestore();
+    });
+  });
+
+  describe('spotify link routes', () => {
+    const TOKEN_KEY = Buffer.alloc(32, 7).toString('base64');
+    const fake: SpotifyClient = {
+      refresh: async () => ({ accessToken: 'at', expiresIn: 3600 }),
+      currentlyPlaying: async () => null,
+      playlistName: async () => null,
+      exchangeCode: async () => ({ accessToken: 'secret-access', refreshToken: 'secret-refresh', expiresIn: 3600 }),
+      me: async () => ({ id: 'sp-ashton', displayName: 'Ashton S' }),
+    };
+
+    beforeEach(async () => {
+      process.env.RL_TOKEN_KEY = TOKEN_KEY;
+      process.env.SPOTIFY_CLIENT_ID = 'cid';
+      await seedPlayers(db());
+      setSpotifyClientForTests(fake);
+    });
+    afterEach(() => {
+      setSpotifyClientForTests(null);
+      delete process.env.RL_TOKEN_KEY;
+    });
+
+    const cb = (qs: string) => spotifyCallbackGET(req('GET', '/spotify/callback?' + qs));
+
+    it('connect without a cookie is 401', async () => {
+      expect((await spotifyConnectGET(req('GET', '/spotify/connect?player=ashton'))).status).toBe(401);
+    });
+
+    it('connect rejects an unknown player', async () => {
+      const res = await spotifyConnectGET(req('GET', '/spotify/connect?player=nobody', { cookie: COOKIE }));
+      expect(res.status).toBe(400);
+      expect((await body(res)).error).toBe('unknown_player');
+    });
+
+    it('connect redirects to Spotify with a verifiable state', async () => {
+      const res = await spotifyConnectGET(req('GET', '/spotify/connect?player=ashton', { cookie: COOKIE }));
+      expect(res.status).toBe(302);
+      const loc = new URL(res.headers.get('location')!);
+      expect(loc.origin + loc.pathname).toBe('https://accounts.spotify.com/authorize');
+      expect(loc.searchParams.get('client_id')).toBe('cid');
+      expect(loc.searchParams.get('response_type')).toBe('code');
+      expect(loc.searchParams.get('show_dialog')).toBe('true');
+      expect(loc.searchParams.get('redirect_uri')).toBe('http://localhost/api/rl/v1/spotify/callback');
+      expect(loc.searchParams.get('scope')).toContain('user-read-currently-playing');
+      const state = loc.searchParams.get('state')!;
+      const [payload, sig] = state.split('.');
+      expect(sig).toBe(hmac(SECRET, payload));
+      const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString());
+      expect(parsed.player).toBe('ashton');
+      expect(parsed.exp).toBe(NOW.getTime() + 10 * 60 * 1000);
+    });
+
+    it('callback with a tampered state redirects with error and links nothing', async () => {
+      const state = signState('ashton', NOW) + 'x';
+      const res = await cb(`code=c&state=${encodeURIComponent(state)}`);
+      expect(res.status).toBe(302);
+      expect(new URL(res.headers.get('location')!).pathname + new URL(res.headers.get('location')!).search).toBe('/RLTracker/settings?spotify=error');
+      expect(await listAccounts(db())).toHaveLength(0);
+    });
+
+    it('callback with an expired state, spotify error, or missing code redirects with error', async () => {
+      const old = signState('ashton', new Date(NOW.getTime() - 11 * 60 * 1000));
+      const fresh = signState('ashton', NOW);
+      for (const qs of [
+        `code=c&state=${encodeURIComponent(old)}`,
+        `error=access_denied&state=${encodeURIComponent(fresh)}`,
+        `state=${encodeURIComponent(fresh)}`,
+        'code=c',
+      ]) {
+        const res = await cb(qs);
+        expect(res.headers.get('location')).toContain('/RLTracker/settings?spotify=error');
+      }
+      expect(await listAccounts(db())).toHaveLength(0);
+    });
+
+    it('callback redirects with error when linking fails', async () => {
+      setSpotifyClientForTests({ ...fake, exchangeCode: async () => { throw new Error('boom'); } });
+      const res = await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      expect(res.headers.get('location')).toContain('spotify=error');
+    });
+
+    it('callback with a valid state creates one account and redirects linked', async () => {
+      const res = await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toBe('http://localhost/RLTracker/settings?spotify=linked');
+      const accts = await listAccounts(db());
+      expect(accts).toHaveLength(1);
+      expect(accts[0].playerSlug).toBe('ashton');
+    });
+
+    it('GET /spotify requires a cookie and never exposes tokens', async () => {
+      expect((await spotifyGET(req('GET', '/spotify'))).status).toBe(401);
+      await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      const res = await spotifyGET(req('GET', '/spotify', { cookie: COOKIE }));
+      const text = await res.text();
+      expect(text).not.toContain('refreshTokenEnc');
+      expect(text).not.toContain('accessToken');
+      expect(text).not.toContain('secret-');
+      const accounts = JSON.parse(text).accounts;
+      expect(accounts).toHaveLength(1);
+      expect(Object.keys(accounts[0]).sort()).toEqual(['displayName', 'id', 'lastSeenPlayingAt', 'playerSlug', 'status']);
+      expect(accounts[0]).toMatchObject({ playerSlug: 'ashton', displayName: 'Ashton S', status: 'ok' });
+    });
+
+    it('DELETE /spotify/[id] unlinks, then 404s', async () => {
+      await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      const id = String((await listAccounts(db()))[0]._id);
+      const ctx = { params: { id } };
+      expect((await spotifyDELETE(req('DELETE', '/spotify/' + id), ctx)).status).toBe(401);
+      expect((await spotifyDELETE(req('DELETE', '/spotify/' + id, { cookie: COOKIE }), ctx)).status).toBe(200);
+      expect(await listAccounts(db())).toHaveLength(0);
+      expect((await spotifyDELETE(req('DELETE', '/spotify/' + id, { cookie: COOKIE }), ctx)).status).toBe(404);
+      const bad = await spotifyDELETE(req('DELETE', '/spotify/zzz', { cookie: COOKIE }), { params: { id: 'zzz' } });
+      expect(bad.status).toBe(404);
     });
   });
 
