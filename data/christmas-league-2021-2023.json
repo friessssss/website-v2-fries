@@ -1,0 +1,1888 @@
+{
+ "seasons": [
+  {
+   "year": 2021,
+   "sessionId": "christmas-league-2021",
+   "date": "2021-09-22T20:00:00-06:00",
+   "songs": [
+    {
+     "song": "Mistletoe",
+     "artist": "Justin Bieber",
+     "goalsFor": 2,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Driving Home for Christmas",
+     "artist": "Chris Rea",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Christmas",
+     "artist": "ROZES",
+     "goalsFor": 5,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "We Wish You a Merry Christmas",
+     "artist": "Eglise Nouvelle Vie",
+     "goalsFor": 4,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "Naughty List",
+     "artist": "Liam Payne & DIXIE",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "I Saw Mommy Kissing Santa Claus",
+     "artist": "The Jackson 5",
+     "goalsFor": 4,
+     "goalsAgainst": 7,
+     "byPlayer": {}
+    },
+    {
+     "song": "Wonderful Christmastime",
+     "artist": "Paul McCartney",
+     "goalsFor": 6,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 2
+     }
+    },
+    {
+     "song": "Rockin' Around the Christmas Tree",
+     "artist": "Brenda Lee",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Dean Martin",
+     "goalsFor": 5,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Wham!",
+     "goalsFor": 10,
+     "goalsAgainst": 10,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Santa Claus is Coming to Town (Live)",
+     "artist": "Bruce Springsteen",
+     "goalsFor": 2,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "Christmas Lights",
+     "artist": "Coldplay",
+     "goalsFor": 2,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Johnny Mathis",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Mariah Carey",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "A Holly Jolly Christmas",
+     "artist": "Burl Ives",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Santa Tell Me",
+     "artist": "Ariana Grande",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Frosty the Snowman",
+     "artist": "Bing Crosby",
+     "goalsFor": 4,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "O Tannenbaum",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 6,
+     "goalsAgainst": 7,
+     "byPlayer": {
+      "Zach": 4,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Jingle Bell Rock",
+     "artist": "Daryl Hall & John Oates",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Believe",
+     "artist": "Josh Groban",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Run Run Rudolph",
+     "artist": "Roger Handeland",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Santa Claus is Coming to Town",
+     "artist": "Michael Bublé",
+     "goalsFor": 3,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "O Christmas Tree",
+     "artist": "Tony Bennett",
+     "goalsFor": 4,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Sleigh Ride",
+     "artist": "Ella Fitzgerald",
+     "goalsFor": 1,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Santa Claus is Coming to Town",
+     "artist": "The Jackson 5",
+     "goalsFor": 7,
+     "goalsAgainst": 7,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Perry Como",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Snowman",
+     "artist": "Sia",
+     "goalsFor": 4,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Ariana Grande",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "The Christmas Song",
+     "artist": "Shawn Mendes & Camila Cabello",
+     "goalsFor": 0,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "Baby It's Cold Outside",
+     "artist": "Idina Menzel Ft. Michael Bublé",
+     "goalsFor": 5,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 3
+     }
+    },
+    {
+     "song": "Joy To The World",
+     "artist": "Nat King Cole",
+     "goalsFor": 1,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Grandma Got Run Over by a Reindeer",
+     "artist": "Elmo & Patsy",
+     "goalsFor": 3,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Feliz Navidad",
+     "artist": "José Feliciano",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas Tree Farm",
+     "artist": "Taylor Swift",
+     "goalsFor": 7,
+     "goalsAgainst": 6,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 5,
+     "goalsAgainst": 8,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Jingle Bells",
+     "artist": "Frank Sinatra",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Underneath the Tree",
+     "artist": "Kelly Clarkson",
+     "goalsFor": 7,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 4,
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Like It's Christmas",
+     "artist": "The Jonas Brothers",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Have Yourself a Merry Little Christmas",
+     "artist": "Frank Sinatra",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Make It To Christmas",
+     "artist": "Alessia Cara",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Michael Bublé",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Baby It's Cold Outside",
+     "artist": "Dean Martin",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 0,
+     "goalsAgainst": 6,
+     "byPlayer": {}
+    },
+    {
+     "song": "You're a Mean One Mr. Grinch",
+     "artist": "Tyler, the Creator",
+     "goalsFor": 0,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "All I Want For Christmas is You",
+     "artist": "Mariah Carey",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Hot Chocolate",
+     "artist": "Tom Hanks",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Santa's Coming for Us",
+     "artist": "Sia",
+     "goalsFor": 4,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Darlene Love",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa Baby",
+     "artist": "Ariana Grande",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Holly Jolly Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "Silver and Gold",
+     "artist": "Burl Ives",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "I'll be Home for Christmas",
+     "artist": "Kavv",
+     "goalsFor": 0,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "Winter Wonderland",
+     "artist": "Soft Eyez",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Blue Christmas",
+     "artist": "Elvis Presley",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Mele Kalikimaka",
+     "artist": "Bing Crosby",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Dean Martin",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1
+     }
+    }
+   ]
+  },
+  {
+   "year": 2022,
+   "sessionId": "christmas-league-2022",
+   "date": "2022-12-01T20:00:00-07:00",
+   "songs": [
+    {
+     "song": "Mistletoe",
+     "artist": "Justin Bieber",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Driving Home for Christmas",
+     "artist": "Chris Rea",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas",
+     "artist": "ROZES",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "We Wish You a Merry Christmas",
+     "artist": "Eglise Nouvelle Vie",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Naughty List",
+     "artist": "Liam Payne & DIXIE",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "I Saw Mommy Kissing Santa Claus",
+     "artist": "The Jackson 5",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Wonderful Christmastime",
+     "artist": "Paul McCartney",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Rockin' Around the Christmas Tree",
+     "artist": "Brenda Lee",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Dean Martin",
+     "goalsFor": 3,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Wham!",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa Claus is Coming to Town (Live)",
+     "artist": "Bruce Springsteen",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas Lights",
+     "artist": "Coldplay",
+     "goalsFor": 4,
+     "goalsAgainst": 9,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 2,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Johnny Mathis",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 2,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Mariah Carey",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "A Holly Jolly Christmas",
+     "artist": "Burl Ives",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Vandy": 2
+     }
+    },
+    {
+     "song": "Santa Tell Me",
+     "artist": "Ariana Grande",
+     "goalsFor": 4,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Sam": 4
+     }
+    },
+    {
+     "song": "Frosty the Snowman",
+     "artist": "Bing Crosby",
+     "goalsFor": 4,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1,
+      "Vandy": 2
+     }
+    },
+    {
+     "song": "O Tannenbaum",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 7,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 4,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Jingle Bell Rock",
+     "artist": "Daryl Hall & John Oates",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Believe",
+     "artist": "Josh Groban",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Run Run Rudolph",
+     "artist": "Roger Handeland",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2
+     }
+    },
+    {
+     "song": "Santa Claus is Coming to Town",
+     "artist": "Michael Bublé",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "O Christmas Tree",
+     "artist": "Tony Bennett",
+     "goalsFor": 1,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Sleigh Ride",
+     "artist": "Ella Fitzgerald",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa Claus is Coming to Town",
+     "artist": "The Jackson 5",
+     "goalsFor": 0,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Perry Como",
+     "goalsFor": 5,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 3,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Snowman",
+     "artist": "Sia",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Ariana Grande",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 2,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "The Christmas Song",
+     "artist": "Shawn Mendes & Camila Cabello",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 3
+     }
+    },
+    {
+     "song": "Baby It's Cold Outside",
+     "artist": "Idina Menzel Ft. Michael Bublé",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Joy To The World",
+     "artist": "Nat King Cole",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Grandma Got Run Over by a Reindeer",
+     "artist": "Elmo & Patsy",
+     "goalsFor": 4,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Sam": 2,
+      "Vandy": 2
+     }
+    },
+    {
+     "song": "Feliz Navidad",
+     "artist": "José Feliciano",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Christmas Tree Farm",
+     "artist": "Taylor Swift",
+     "goalsFor": 6,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 4
+     }
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 6,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 3,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Jingle Bells",
+     "artist": "Frank Sinatra",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Underneath the Tree",
+     "artist": "Kelly Clarkson",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Like It's Christmas",
+     "artist": "The Jonas Brothers",
+     "goalsFor": 0,
+     "goalsAgainst": 3,
+     "byPlayer": {}
+    },
+    {
+     "song": "Have Yourself a Merry Little Christmas",
+     "artist": "Frank Sinatra",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 1,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Make It To Christmas",
+     "artist": "Alessia Cara",
+     "goalsFor": 4,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 2,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Michael Bublé",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Baby It's Cold Outside",
+     "artist": "Dean Martin",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "You're a Mean One Mr. Grinch",
+     "artist": "Tyler, the Creator",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Sam": 2,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "All I Want For Christmas is You",
+     "artist": "Mariah Carey",
+     "goalsFor": 4,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 2,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Hot Chocolate",
+     "artist": "Tom Hanks",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Santa's Coming for Us",
+     "artist": "Sia",
+     "goalsFor": 2,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 2
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Darlene Love",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa Baby",
+     "artist": "Ariana Grande",
+     "goalsFor": 4,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 3
+     }
+    },
+    {
+     "song": "Holly Jolly Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Sam": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Silver and Gold",
+     "artist": "Burl Ives",
+     "goalsFor": 0,
+     "goalsAgainst": 3,
+     "byPlayer": {}
+    },
+    {
+     "song": "I'll be Home for Christmas",
+     "artist": "Kavv",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "Winter Wonderland",
+     "artist": "Soft Eyez",
+     "goalsFor": 0,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "Blue Christmas",
+     "artist": "Elvis Presley",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Mele Kalikimaka",
+     "artist": "Bing Crosby",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Dean Martin",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Lights On",
+     "artist": "Tyler, the Creator",
+     "goalsFor": 0,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa, Can’t You Hear Me",
+     "artist": "Kelly Clarkson",
+     "goalsFor": 4,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 4
+     }
+    },
+    {
+     "song": "I'll be Home for Christmas",
+     "artist": "Tony Bennett",
+     "goalsFor": 6,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1,
+      "Sam": 3
+     }
+    },
+    {
+     "song": "The Christmas Song",
+     "artist": "Nat King Cole",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1,
+      "Vandy": 2
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Johnny Mathis",
+     "goalsFor": 0,
+     "goalsAgainst": 3,
+     "byPlayer": {}
+    },
+    {
+     "song": "Skating",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "St. Brick Intro",
+     "artist": "Gucci Mane",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "The Polar Express",
+     "artist": "Tom Hanks",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "The First Noel",
+     "artist": "Andy Williams",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Little Saint Nick",
+     "artist": "The Beach Boys",
+     "goalsFor": 3,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Sam": 3
+     }
+    }
+   ]
+  },
+  {
+   "year": 2023,
+   "sessionId": "christmas-league-2023",
+   "date": "2023-11-07T20:00:00-07:00",
+   "songs": [
+    {
+     "song": "Mistletoe",
+     "artist": "Justin Bieber",
+     "goalsFor": 4,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Mason": 2,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Driving Home for Christmas",
+     "artist": "Chris Rea",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Christmas",
+     "artist": "ROZES",
+     "goalsFor": 6,
+     "goalsAgainst": 6,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1,
+      "Sam": 1,
+      "Ash": 3
+     }
+    },
+    {
+     "song": "We Wish You a Merry Christmas",
+     "artist": "Eglise Nouvelle Vie",
+     "goalsFor": 0,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "Naughty List",
+     "artist": "Liam Payne & DIXIE",
+     "goalsFor": 0,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "I Saw Mommy Kissing Santa Claus",
+     "artist": "The Jackson 5",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Wonderful Christmastime",
+     "artist": "Paul McCartney",
+     "goalsFor": 1,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Rockin' Around the Christmas Tree",
+     "artist": "Brenda Lee",
+     "goalsFor": 0,
+     "goalsAgainst": 4,
+     "byPlayer": {}
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Dean Martin",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Wham!",
+     "goalsFor": 8,
+     "goalsAgainst": 6,
+     "byPlayer": {
+      "Mason": 7,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Santa Claus is Coming to Town (Live)",
+     "artist": "Bruce Springsteen",
+     "goalsFor": 5,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 3,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Christmas Lights",
+     "artist": "Coldplay",
+     "goalsFor": 5,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 2,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Mariah Carey",
+     "goalsFor": 2,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 2
+     }
+    },
+    {
+     "song": "A Holly Jolly Christmas",
+     "artist": "Burl Ives",
+     "goalsFor": 7,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1,
+      "Sam": 1,
+      "Vandy": 1,
+      "Ash": 2
+     }
+    },
+    {
+     "song": "Santa Tell Me",
+     "artist": "Ariana Grande",
+     "goalsFor": 8,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 3,
+      "Sam": 2,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Frosty the Snowman",
+     "artist": "Bing Crosby",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "O Tannenbaum",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 6,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2,
+      "Sam": 1,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Jingle Bell Rock",
+     "artist": "Daryl Hall & John Oates",
+     "goalsFor": 7,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 5,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Believe",
+     "artist": "Josh Groban",
+     "goalsFor": 1,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Sleigh Ride",
+     "artist": "Ella Fitzgerald",
+     "goalsFor": 4,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Perry Como",
+     "goalsFor": 4,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 4
+     }
+    },
+    {
+     "song": "Snowman",
+     "artist": "Sia",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Last Christmas",
+     "artist": "Ariana Grande",
+     "goalsFor": 6,
+     "goalsAgainst": 10,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 2,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "The Christmas Song",
+     "artist": "Shawn Mendes & Camila Cabello",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Baby It's Cold Outside",
+     "artist": "Idina Menzel Ft. Michael Bublé",
+     "goalsFor": 7,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 4,
+      "Mason": 2,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Joy To The World",
+     "artist": "Nat King Cole",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Grandma Got Run Over by a Reindeer",
+     "artist": "Elmo & Patsy",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Feliz Navidad",
+     "artist": "José Feliciano",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Christmas Tree Farm",
+     "artist": "Taylor Swift",
+     "goalsFor": 5,
+     "goalsAgainst": 6,
+     "byPlayer": {
+      "Mason": 3,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "White Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 4,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Jingle Bells",
+     "artist": "Frank Sinatra",
+     "goalsFor": 3,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Underneath the Tree",
+     "artist": "Kelly Clarkson",
+     "goalsFor": 6,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 3,
+      "Mason": 1,
+      "Ash": 2
+     }
+    },
+    {
+     "song": "Like It's Christmas",
+     "artist": "The Jonas Brothers",
+     "goalsFor": 3,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 3
+     }
+    },
+    {
+     "song": "Have Yourself a Merry Little Christmas",
+     "artist": "Frank Sinatra",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Make It To Christmas",
+     "artist": "Alessia Cara",
+     "goalsFor": 5,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 3,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "It's Beginning to Look a lot like Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 4,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "You're a Mean One Mr. Grinch",
+     "artist": "Tyler, the Creator",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Sam": 1,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "All I Want For Christmas is You",
+     "artist": "Mariah Carey",
+     "goalsFor": 5,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 3
+     }
+    },
+    {
+     "song": "Hot Chocolate",
+     "artist": "Tom Hanks",
+     "goalsFor": 6,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 2,
+      "Sam": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Santa's Coming for Us",
+     "artist": "Sia",
+     "goalsFor": 1,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Christmas (Baby please come home)",
+     "artist": "Darlene Love",
+     "goalsFor": 3,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Santa Baby",
+     "artist": "Ariana Grande",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Holly Jolly Christmas",
+     "artist": "Michael Bublé",
+     "goalsFor": 5,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 3,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Silver and Gold",
+     "artist": "Burl Ives",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "I'll be Home for Christmas",
+     "artist": "Kavv",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Winter Wonderland",
+     "artist": "Soft Eyez",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Blue Christmas",
+     "artist": "Elvis Presley",
+     "goalsFor": 3,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Mele Kalikimaka",
+     "artist": "Bing Crosby",
+     "goalsFor": 3,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Silver Bells",
+     "artist": "Dean Martin",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Lights On",
+     "artist": "Tyler, the Creator",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Santa, Can’t You Hear Me",
+     "artist": "Kelly Clarkson",
+     "goalsFor": 4,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 2,
+      "Sam": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "I'll be Home for Christmas",
+     "artist": "Tony Bennett",
+     "goalsFor": 3,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 2,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "The Christmas Song",
+     "artist": "Nat King Cole",
+     "goalsFor": 4,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1,
+      "Sam": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Skating",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 6,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Mason": 3,
+      "Vandy": 1,
+      "Ash": 2
+     }
+    },
+    {
+     "song": "St. Brick Intro",
+     "artist": "Gucci Mane",
+     "goalsFor": 4,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1,
+      "Vandy": 1,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "The Polar Express",
+     "artist": "Tom Hanks",
+     "goalsFor": 13,
+     "goalsAgainst": 6,
+     "byPlayer": {
+      "Zach": 5,
+      "Mason": 6,
+      "Sam": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Little Saint Nick",
+     "artist": "The Beach Boys",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Have Yourself a Merry Little Christmas",
+     "artist": "Rook1e",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 2
+     }
+    },
+    {
+     "song": "Little Saint Nick",
+     "artist": "Surfaces",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "A Nonsense Christmas",
+     "artist": "Sabrina Carpenter",
+     "goalsFor": 1,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Here Comes Santa Claus (Right Down...)",
+     "artist": "Elvis Presley",
+     "goalsFor": 1,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Deck The Halls",
+     "artist": "Nat King Cole",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Mason": 1
+     }
+    },
+    {
+     "song": "It's The Most Wonderful Time of the Year",
+     "artist": "Andy Williams",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Zach": 1
+     }
+    },
+    {
+     "song": "Happy Holiday/The Holiday Season",
+     "artist": "Andy Williams",
+     "goalsFor": 2,
+     "goalsAgainst": 4,
+     "byPlayer": {
+      "Zach": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Carol of the Bells",
+     "artist": "Mykola Dmytrovych Leontovych",
+     "goalsFor": 2,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Christmas Canon",
+     "artist": "Trans-Siberian Orchestra",
+     "goalsFor": 4,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 2,
+      "Sam": 2
+     }
+    },
+    {
+     "song": "Do They Know It's Christmas?",
+     "artist": "Band Aid",
+     "goalsFor": 6,
+     "goalsAgainst": 5,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 4,
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Do You Hear What I Hear?",
+     "artist": "Bing Crosby",
+     "goalsFor": 5,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Vandy": 2,
+      "Ash": 3
+     }
+    },
+    {
+     "song": "God Rest Ye Merry, Gentlemen",
+     "artist": "Nat King Cole",
+     "goalsFor": 1,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Sam": 1
+     }
+    },
+    {
+     "song": "Run Rudolph Run",
+     "artist": "Chuck Berry",
+     "goalsFor": 0,
+     "goalsAgainst": 3,
+     "byPlayer": {}
+    },
+    {
+     "song": "Linus and Lucy",
+     "artist": "Vince Guaraldi Trio",
+     "goalsFor": 1,
+     "goalsAgainst": 0,
+     "byPlayer": {
+      "Ash": 1
+     }
+    },
+    {
+     "song": "Please Come Home For Christmas",
+     "artist": "Eagles",
+     "goalsFor": 3,
+     "goalsAgainst": 1,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 2
+     }
+    },
+    {
+     "song": "Rudolph The Red Nosed Reindeer",
+     "artist": "Gene Autry",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Mason": 1,
+      "Vandy": 1
+     }
+    },
+    {
+     "song": "Santa Claus is Back in Town",
+     "artist": "Elvis Presley",
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "December",
+     "artist": "Ariana Grande",
+     "goalsFor": 0,
+     "goalsAgainst": 3,
+     "byPlayer": {}
+    },
+    {
+     "song": "White Christmas",
+     "artist": "The Philly Specials",
+     "goalsFor": 2,
+     "goalsAgainst": 2,
+     "byPlayer": {
+      "Zach": 1,
+      "Mason": 1
+     }
+    },
+    {
+     "song": "Blue Christmas",
+     "artist": "The Philly Specials",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    },
+    {
+     "song": "Christmas (Baby Please Come Home)",
+     "artist": "The Philly Specials",
+     "goalsFor": 0,
+     "goalsAgainst": 2,
+     "byPlayer": {}
+    },
+    {
+     "song": "santa doesn't know you like i do",
+     "artist": "Sabrina Carpenter",
+     "goalsFor": 0,
+     "goalsAgainst": 1,
+     "byPlayer": {}
+    },
+    {
+     "song": "cindy lou who",
+     "artist": "Sabrina Carpenter",
+     "goalsFor": 0,
+     "goalsAgainst": 0,
+     "byPlayer": {}
+    }
+   ]
+  }
+ ]
+}

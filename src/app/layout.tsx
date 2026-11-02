@@ -2,13 +2,19 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import { Abel } from 'next/font/google';
+import { Abel, JetBrains_Mono } from 'next/font/google';
 
 import Footer from '@/components/Footer';
 
 const abel = Abel({
   weight: '400',
   subsets: ['latin'],
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -32,7 +38,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${abel.className} relative min-h-screen bg-[#040705] text-[#f5f8f1] antialiased`}>
+      <body className={`${abel.className} ${jetbrainsMono.variable} relative min-h-screen bg-[#040705] text-[#f5f8f1] antialiased`}>
         <main className="pt-0">{children}</main>
         {/* <Footer /> */}
         <SpeedInsights />

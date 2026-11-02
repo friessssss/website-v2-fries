@@ -58,6 +58,34 @@
   --accent-lime: #c3ff41;
   --accent-muted: #96a17c;
   font-feature-settings: "ss01" 1, "cv11" 1;
+
+  /* RL design tokens (field theme) */
+  --surface-000: #040705;
+  --surface-050: #070b05;
+  --tint-05: rgba(255, 255, 255, 0.05);
+  --tint-10: rgba(255, 255, 255, 0.1);
+  --ink: #f5f8f1;
+  --ink-bright: #fdfef8;
+  --ink-90: rgba(255, 255, 255, 0.9);
+  --ink-70: rgba(255, 255, 255, 0.7);
+  --ink-60: rgba(255, 255, 255, 0.6);
+  --ink-50: rgba(255, 255, 255, 0.5);
+  --ink-40: rgba(255, 255, 255, 0.4);
+  --line-20: rgba(255, 255, 255, 0.2);
+  --line-10: rgba(255, 255, 255, 0.1);
+  --line-08: rgba(255, 255, 255, 0.08);
+  --glyph: rgba(62, 62, 62, 0.55);
+  --lime: #c3ff41;
+  --lime-hover: #b0e639;
+  --on-lime: #070b05;
+  --danger: #ef4444;
+  --space-gutter: 16px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --space-gutter: 90px;
+  }
 }
 
 html {
@@ -193,4 +221,63 @@ body {
 .group:hover .animated-button-text .animated-letter-inner,
 .animated-button-text:hover .animated-letter-inner {
   transform: translateY(-1.2em);
+}
+
+/* RL Tracker shared utilities */
+.rl-chip {
+  border: 1px solid var(--line-20);
+  border-radius: 4px;
+  background: var(--tint-05);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.rl-glass {
+  background: rgba(7, 10, 5, 0.85);
+  border: 1px solid var(--line-08);
+  border-radius: 8px;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.rl-prompt {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--ink-40);
+  transition: color 0.2s ease;
+}
+
+.rl-prompt:hover {
+  color: var(--ink-60);
+}
+
+.rl-focus:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-chip,
+  .rl-prompt {
+    transition: none;
+  }
+}
+
+/* New-goal highlight on the leaderboard: tint-10 fading out over 1.2 s */
+@keyframes rl-flash {
+  from {
+    background-color: var(--tint-10);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.rl-flash {
+  animation: rl-flash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-flash {
+    animation: none;
+  }
 }
