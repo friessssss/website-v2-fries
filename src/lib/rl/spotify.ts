@@ -255,12 +255,32 @@ async function askAccount(
     return { account, accessToken, playing };
   } catch (e) {
     if (e instanceof SpotifyAuthError) {
-      await collections(db).spotifyAccounts.updateOne(
-        { _id: account._id },
-        { $set: { status: 'needs_relink' } },
-      );
+      try {
+        await collections(db).spotifyAccounts.updateOne(
+          { _id: account._id },
+          { $set: { status: 'needs_relink' } },
+        );
+      } catch {
+        // Could not persist the status; skip this account rather than fail the pick.
+      }
     }
     return null;
+  }
+}
+
+/** One deadline for the whole per-account flow (refresh, lookup, retry). A timeout skips the account. */
+async function askWithDeadline(
+  deadlineMs: number,
+  run: () => Promise<Answer | null>,
+): Promise<Answer | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), deadlineMs);
+  });
+  try {
+    return await Promise.race([run(), timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -269,9 +289,10 @@ export async function pickNowPlaying(
   client: SpotifyClient,
   tokenKey: string,
   now: Date,
+  deadlineMs = TIMEOUT_MS,
 ): Promise<{ track: Track; hostSlug: string } | null> {
   const accounts = await collections(db).spotifyAccounts.find({ status: 'ok' }).toArray();
-  const answers = (await Promise.all(accounts.map((a) => askAccount(db, client, a, tokenKey, now)))).filter(
+  const answers = (await Promise.all(accounts.map((a) => askWithDeadline(deadlineMs, () => askAccount(db, client, a, tokenKey, now))))).filter(
     (a): a is Answer => a !== null,
   );
   if (answers.length === 0) return null;

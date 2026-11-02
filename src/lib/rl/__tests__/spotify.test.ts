@@ -216,6 +216,36 @@ describe('spotify', () => {
     expect(calls.currentlyPlaying).toBe(2);
   });
 
+  it('skips an account that hangs past the per-account deadline', async () => {
+    await seed('slow');
+    await seed('a1');
+    const { client } = fakeClient({ 'tok-a1': playing('A') });
+    const inner = client.currentlyPlaying;
+    client.currentlyPlaying = (t) => (t === 'tok-slow' ? new Promise<never>(() => {}) : inner(t));
+    const r = await pickNowPlaying(db, client, key, NOW, 50);
+    expect(r?.track.trackId).toBe('A');
+    expect(r?.hostSlug).toBe('a1');
+  });
+
+  it('does not fail the pick when persisting needs_relink throws', async () => {
+    await seed('bad', { expired: true, refresh: 'bad-refresh' });
+    await seed('a1');
+    const { client } = fakeClient({ 'tok-a1': playing('A') });
+    const realCollection = db.collection.bind(db);
+    db.collection = ((name: string, ...a: any[]) => {
+      const c = (realCollection as any)(name, ...a);
+      const o = c.updateOne.bind(c);
+      c.updateOne = (f: any, u: any, ...r: any[]) =>
+        u?.$set?.status === 'needs_relink' ? Promise.reject(new Error('db down')) : o(f, u, ...r);
+      return c;
+    }) as typeof db.collection;
+    try {
+      expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
+    } finally {
+      db.collection = realCollection as typeof db.collection;
+    }
+  });
+
   it('lists accounts without secrets and unlinks', async () => {
     await seed('a1');
     const list = await listAccounts(db);
