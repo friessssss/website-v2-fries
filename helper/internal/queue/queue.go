@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,13 +19,15 @@ type Queue struct {
 	mu   sync.Mutex
 	path string
 	evs  []model.Event
+	// write is the append primitive; tests replace it to inject failures.
+	write func(f *os.File, b []byte) (int, error)
 }
 
 // Open loads the queue file, creating it lazily on first Push. Lines that do
 // not parse (for example a line truncated by a crash) are skipped, and the
 // file is rewritten clean so later appends cannot merge with the garbage.
 func Open(path string) (*Queue, error) {
-	q := &Queue{path: path}
+	q := &Queue{path: path, write: func(f *os.File, b []byte) (int, error) { return f.Write(b) }}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -78,13 +81,24 @@ func (q *Queue) Push(evs ...model.Event) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(buf.Bytes()); err != nil {
+	size, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
 		f.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil {
+	// On any failure cut the file back so a partial line cannot corrupt the next append.
+	rollback := func(err error) error {
+		if terr := f.Truncate(size); terr != nil {
+			err = fmt.Errorf("%w (rollback failed: %v)", err, terr)
+		}
 		f.Close()
 		return err
+	}
+	if _, err := q.write(f, buf.Bytes()); err != nil {
+		return rollback(err)
+	}
+	if err := f.Sync(); err != nil {
+		return rollback(err)
 	}
 	if err := f.Close(); err != nil {
 		return err

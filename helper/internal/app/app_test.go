@@ -509,3 +509,133 @@ func TestRunReturnsOnCancel(t *testing.T) {
 		t.Fatal("Run did not return")
 	}
 }
+
+// ---- fix round 1 ----
+
+func TestPauseAfterRepairResumeStopsReader(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrUnauthorized })
+	h.q.Push(goalEv(1))
+	a, _, _ := h.start()
+	waitFor(t, "NeedsPair", func() bool { return hasState(h, NeedsPair) })
+	a.Resume()
+	waitFor(t, "redial", func() bool { return h.dials.Load() >= 2 })
+	waitFor(t, "NeedsPair again", func() bool { return a.currentState() == NeedsPair })
+	a.Pause()
+	waitFor(t, "Paused", func() bool { return a.currentState() == Paused })
+	h.src.events["late"] = []model.Event{goalEv(9)}
+	before := h.q.Len()
+	h.stream.ch <- item{raw: json.RawMessage("late")}
+	time.Sleep(60 * time.Millisecond)
+	if h.q.Len() != before || len(h.stream.ch) != 1 {
+		t.Fatalf("reader still active after Pause: queue %d->%d, pending items %d", before, h.q.Len(), len(h.stream.ch))
+	}
+}
+
+func TestOnStateSerialisedAndOrdered(t *testing.T) {
+	q, _ := queue.Open(filepath.Join(t.TempDir(), "q"))
+	var inflight, overlap atomic.Int32
+	var last atomic.Int32
+	last.Store(-1)
+	a := New(Deps{Queue: q, OnState: func(s State) {
+		if inflight.Add(1) > 1 {
+			overlap.Add(1)
+		}
+		time.Sleep(50 * time.Microsecond)
+		last.Store(int32(s))
+		inflight.Add(-1)
+	}})
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				a.setConnected((i+g)%2 == 0)
+			}
+		}(g)
+	}
+	wg.Wait()
+	a.setConnected(true)
+	if overlap.Load() != 0 {
+		t.Fatalf("%d overlapping callbacks", overlap.Load())
+	}
+	if State(last.Load()) != Connected || a.currentState() != Connected {
+		t.Fatalf("stale final state %v vs %v", State(last.Load()), a.currentState())
+	}
+}
+
+func TestHeartbeatSkippedWithoutGUIDAndGUIDResetOnNewSource(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrRetryable })
+	h.src.inMatch.Store(true)
+	a, _, _ := h.start()
+	waitFor(t, "connected", func() bool { return hasState(h, Connected) })
+	for i := 0; i < 3; i++ {
+		h.hbTick <- struct{}{}
+	}
+	if h.q.Len() != 0 {
+		t.Fatalf("heartbeat with empty guid pushed: %+v", h.q.Peek(5))
+	}
+	h.src.events["g"] = []model.Event{goalEv(1)}
+	h.stream.ch <- item{raw: json.RawMessage("g")}
+	waitFor(t, "guid learned", func() bool {
+		a.srcMu.Lock()
+		defer a.srcMu.Unlock()
+		return a.guid == "m1"
+	})
+	h.stream.ch <- item{err: io.EOF}
+	waitFor(t, "redial", func() bool { return h.dials.Load() >= 2 })
+	waitFor(t, "guid reset", func() bool {
+		a.srcMu.Lock()
+		defer a.srcMu.Unlock()
+		return a.src != nil && a.guid == ""
+	})
+}
+
+func TestRejectedBatchResentIndividually(t *testing.T) {
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		for _, e := range evs {
+			if e.At.Second() == 2 { // the bad one
+				return nil, api.ErrRejected{Status: 400, Body: "bad_event"}
+			}
+		}
+		return okAll(call, evs)
+	})
+	h.dialErr.Store(true)
+	h.q.Push(goalEv(1), goalEv(2), goalEv(3))
+	h.start()
+	waitFor(t, "drain", func() bool { return h.q.Len() == 0 })
+	got := h.poster.Delivered()
+	if len(got) != 2 || got[0].At.Second() != 1 || got[1].At.Second() != 3 {
+		t.Fatalf("delivered %+v", got)
+	}
+}
+
+// failQueue fails Push while fail is set.
+type failQueue struct {
+	*queue.Queue
+	fail atomic.Bool
+}
+
+func (f *failQueue) Push(evs ...model.Event) error {
+	if f.fail.Load() {
+		return errors.New("disk full")
+	}
+	return f.Queue.Push(evs...)
+}
+
+func TestFailedQueuePushIsRetriedNotLost(t *testing.T) {
+	h := newHarness(t, okAll)
+	fq := &failQueue{Queue: h.q}
+	fq.fail.Store(true)
+	h.deps.Queue = fq
+	h.src.events["g"] = []model.Event{goalEv(1)}
+	h.stream.ch <- item{raw: json.RawMessage("g")}
+	h.start()
+	waitFor(t, "read attempted", func() bool { return len(h.stream.ch) == 0 })
+	time.Sleep(20 * time.Millisecond)
+	if h.poster.Calls() != 0 || h.q.Len() != 0 {
+		t.Fatal("nothing should be persisted while push fails")
+	}
+	fq.fail.Store(false)
+	waitFor(t, "delivered after recovery", func() bool { return len(h.poster.Delivered()) == 1 })
+}

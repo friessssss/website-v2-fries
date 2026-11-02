@@ -1,6 +1,8 @@
 package queue
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -123,5 +125,33 @@ func TestConcurrent(t *testing.T) {
 	wg.Wait()
 	if q.Len() != 80 {
 		t.Fatalf("len %d", q.Len())
+	}
+}
+
+func TestFailedAppendIsRolledBack(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "queue.jsonl")
+	q, _ := Open(p)
+	q.Push(ev("goal", 1))
+	q.write = func(f *os.File, b []byte) (int, error) {
+		n, _ := f.Write(b[:len(b)/2])
+		return n, errors.New("disk full")
+	}
+	if err := q.Push(ev("goal", 2)); err == nil {
+		t.Fatal("expected error")
+	}
+	if q.Len() != 1 {
+		t.Fatalf("len %d", q.Len())
+	}
+	q.write = func(f *os.File, b []byte) (int, error) { return f.Write(b) }
+	if err := q.Push(ev("goal", 3)); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(p)
+	if bytes.Count(data, []byte("\n")) != 2 {
+		t.Fatalf("file corrupt: %q", data)
+	}
+	q2, _ := Open(p)
+	if q2.Len() != 2 {
+		t.Fatalf("reopen len %d", q2.Len())
 	}
 }

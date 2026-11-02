@@ -12,7 +12,6 @@ import (
 
 	"github.com/friessssss/website-v2-fries/helper/internal/api"
 	"github.com/friessssss/website-v2-fries/helper/internal/model"
-	"github.com/friessssss/website-v2-fries/helper/internal/queue"
 )
 
 // State is what the tray shows.
@@ -68,13 +67,21 @@ type Poster interface {
 	PostEvents(ctx context.Context, events []model.Event, sentAt time.Time) ([]api.Result, error)
 }
 
+// Queue is the persistent event queue (satisfied by *queue.Queue).
+type Queue interface {
+	Push(evs ...model.Event) error
+	Peek(n int) []model.Event
+	Drop(n int) error
+	Len() int
+}
+
 // Deps are the injected collaborators. Now, Sleep, Logf, OnState and OnGoal
 // are optional.
 type Deps struct {
 	Dial      func(ctx context.Context) (Stream, error)
 	NewSource func() Source
 	Poster    Poster
-	Queue     *queue.Queue
+	Queue     Queue
 	Now       func() time.Time
 	Sleep     func(ctx context.Context, d time.Duration) error
 	OnState   func(State)
@@ -85,6 +92,11 @@ type Deps struct {
 // App is the orchestrator.
 type App struct {
 	d Deps
+
+	pendMu  sync.Mutex // events whose queue push failed, retried later
+	pending []model.Event
+
+	stateMu sync.Mutex // serialises compute-and-callback in update
 
 	srcMu sync.Mutex // serialises Feed and InMatch on the current Source
 	src   Source
@@ -162,6 +174,9 @@ func (a *App) Resume() {
 	a.paused = false
 	a.needsPair = false
 	if a.root != nil {
+		if a.actCancel != nil {
+			a.actCancel() // otherwise the old context would outlive a later Pause
+		}
 		a.actCtx, a.actCancel = context.WithCancel(a.root)
 	}
 	close(a.resumeCh)
@@ -172,6 +187,8 @@ func (a *App) Resume() {
 
 // update recomputes the state and calls OnState if it changed.
 func (a *App) update() {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
 	backlog := a.d.Queue.Len() > 0
 	a.mu.Lock()
 	var s State
@@ -190,6 +207,7 @@ func (a *App) update() {
 	changed := s != a.state
 	a.state = s
 	a.mu.Unlock()
+	// stateMu is still held, so callbacks are ordered and never concurrent.
 	if changed && a.d.OnState != nil {
 		a.d.OnState(s)
 	}
@@ -243,6 +261,7 @@ func (a *App) setConnected(v bool) {
 func (a *App) setSource(s Source) {
 	a.srcMu.Lock()
 	a.src = s
+	a.guid = "" // a new connection starts a fresh match identity
 	a.srcMu.Unlock()
 }
 
@@ -286,6 +305,7 @@ func (a *App) reader(ctx context.Context) {
 
 func (a *App) readLoop(ctx context.Context, stream Stream) error {
 	for {
+		a.pushPending()
 		raw, err := stream.Next(ctx)
 		if err != nil {
 			return err
@@ -301,12 +321,25 @@ func (a *App) readLoop(ctx context.Context, stream Stream) error {
 		if len(evs) == 0 {
 			continue
 		}
-		if err := a.d.Queue.Push(evs...); err != nil {
-			a.d.Logf("queue push failed: %v", err)
-			continue
-		}
+		a.pushPending(evs...)
 		a.update()
 	}
+}
+
+// pushPending appends evs to any events whose earlier push failed and tries
+// to persist them all; on failure they stay in memory for the next attempt.
+func (a *App) pushPending(evs ...model.Event) {
+	a.pendMu.Lock()
+	defer a.pendMu.Unlock()
+	a.pending = append(a.pending, evs...)
+	if len(a.pending) == 0 {
+		return
+	}
+	if err := a.d.Queue.Push(a.pending...); err != nil {
+		a.d.Logf("queue push failed, keeping %d events in memory: %v", len(a.pending), err)
+		return
+	}
+	a.pending = nil
 }
 
 // heartbeat pushes a heartbeat every 30 s while the Source reports a match.
@@ -319,25 +352,28 @@ func (a *App) heartbeat(ctx context.Context) {
 		in := a.src != nil && a.src.InMatch()
 		guid := a.guid
 		a.srcMu.Unlock()
-		if !in {
+		if !in || guid == "" { // the server rejects an empty matchGuid for the whole batch
 			continue
 		}
-		hb := model.Event{Kind: "heartbeat", MatchGUID: guid, At: a.d.Now()}
-		if err := a.d.Queue.Push(hb); err != nil {
-			a.d.Logf("queue push failed: %v", err)
-		}
+		a.pushPending(model.Event{Kind: "heartbeat", MatchGUID: guid, At: a.d.Now()})
 	}
 }
 
 // flusher uploads the queue in batches with backoff on retryable errors.
 func (a *App) flusher(ctx context.Context) {
 	backoff := FlushEvery
+	singles := 0 // events at the queue front still to be sent one at a time
 	for {
 		act, ok := a.waitFlushable(ctx)
 		if !ok {
 			return
 		}
-		batch := a.d.Queue.Peek(BatchSize)
+		a.pushPending()
+		n := BatchSize
+		if singles > 0 {
+			n = 1
+		}
+		batch := a.d.Queue.Peek(n)
 		if len(batch) == 0 {
 			a.update()
 			if a.d.Sleep(ctx, FlushEvery) != nil {
@@ -355,6 +391,7 @@ func (a *App) flusher(ctx context.Context) {
 			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
 				a.d.Logf("queue drop failed: %v", derr)
 			}
+			singles = max(singles-len(batch), 0)
 			a.notifyGoals(batch, results)
 			a.update()
 			if len(batch) == BatchSize {
@@ -376,7 +413,14 @@ func (a *App) flusher(ctx context.Context) {
 		default:
 			var rej api.ErrRejected
 			if errors.As(err, &rej) {
-				a.d.Logf("dropping %d events rejected by the site: %v", len(batch), err)
+				if len(batch) > 1 {
+					// One bad event must not discard the good ones: resend individually.
+					a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
+					singles = len(batch)
+					continue
+				}
+				a.d.Logf("dropping event rejected by the site: %v", err)
+				singles = max(singles-1, 0)
 				if derr := a.d.Queue.Drop(len(batch)); derr != nil {
 					a.d.Logf("queue drop failed: %v", derr)
 				}
@@ -415,4 +459,11 @@ func (a *App) notifyGoals(batch []model.Event, results []api.Result) {
 		}
 		a.d.OnGoal(r.ActorDisplay, r.Song)
 	}
+}
+
+// currentState returns the last computed state.
+func (a *App) currentState() State {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.state
 }
