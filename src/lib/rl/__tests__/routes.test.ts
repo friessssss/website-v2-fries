@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import type { NextResponse } from 'next/server';
 import { useTestDb } from './testdb';
 import { seedNight } from './fixtures';
 import { collections } from '../db';
@@ -9,7 +10,7 @@ import { seedPlayers } from '../players';
 import { setFetchForTests } from '../helper-release';
 import { hmac } from '../crypto';
 import { listAccounts } from '../spotify';
-import { setSpotifyClientForTests, signState } from '../spotify-link';
+import { NONCE_COOKIE, setSpotifyClientForTests, signState } from '../spotify-link';
 import type { SpotifyClient } from '../spotify';
 import * as request from '@/lib/rl/request';
 
@@ -414,9 +415,16 @@ describe('rl v1 routes', () => {
     afterEach(() => {
       setSpotifyClientForTests(null);
       delete process.env.RL_TOKEN_KEY;
+      delete process.env.SPOTIFY_CLIENT_ID;
     });
 
-    const cb = (qs: string) => spotifyCallbackGET(req('GET', '/spotify/callback?' + qs));
+    const nonceOf = (state: string) => JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()).nonce as string;
+    const cb = (qs: string, cookie?: string) => spotifyCallbackGET(req('GET', '/spotify/callback?' + qs, { cookie }));
+    /** Callback with a freshly signed state and the matching nonce cookie. */
+    const link = (player = 'ashton', at = NOW) => {
+      const state = signState(player, at);
+      return cb(`code=c&state=${encodeURIComponent(state)}`, `${NONCE_COOKIE}=${nonceOf(state)}`);
+    };
 
     it('connect without a cookie is 401', async () => {
       expect((await spotifyConnectGET(req('GET', '/spotify/connect?player=ashton'))).status).toBe(401);
@@ -457,26 +465,29 @@ describe('rl v1 routes', () => {
     it('callback with an expired state, spotify error, or missing code redirects with error', async () => {
       const old = signState('ashton', new Date(NOW.getTime() - 11 * 60 * 1000));
       const fresh = signState('ashton', NOW);
-      for (const qs of [
-        `code=c&state=${encodeURIComponent(old)}`,
-        `error=access_denied&state=${encodeURIComponent(fresh)}`,
-        `state=${encodeURIComponent(fresh)}`,
-        'code=c',
-      ]) {
-        const res = await cb(qs);
+      const ck = (st: string) => `${NONCE_COOKIE}=${nonceOf(st)}`;
+      for (const [qs, cookie] of [
+        [`code=c&state=${encodeURIComponent(old)}`, ck(old)],
+        [`error=access_denied&state=${encodeURIComponent(fresh)}`, ck(fresh)],
+        [`state=${encodeURIComponent(fresh)}`, ck(fresh)],
+        ['code=c', undefined],
+      ] as const) {
+        const res = await cb(qs, cookie);
         expect(res.headers.get('location')).toContain('/RLTracker/settings?spotify=error');
       }
       expect(await listAccounts(db())).toHaveLength(0);
     });
 
     it('callback redirects with error when linking fails', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
       setSpotifyClientForTests({ ...fake, exchangeCode: async () => { throw new Error('boom'); } });
-      const res = await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      const res = await link();
       expect(res.headers.get('location')).toContain('spotify=error');
+      spy.mockRestore();
     });
 
     it('callback with a valid state creates one account and redirects linked', async () => {
-      const res = await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      const res = await link();
       expect(res.status).toBe(302);
       expect(res.headers.get('location')).toBe('http://localhost/RLTracker/settings?spotify=linked');
       const accts = await listAccounts(db());
@@ -484,9 +495,51 @@ describe('rl v1 routes', () => {
       expect(accts[0].playerSlug).toBe('ashton');
     });
 
+    it('connect sets a nonce cookie matching the state', async () => {
+      const res = await spotifyConnectGET(req('GET', '/spotify/connect?player=ashton', { cookie: COOKIE }));
+      const state = new URL(res.headers.get('location')!).searchParams.get('state')!;
+      const c = (res as NextResponse).cookies.get(NONCE_COOKIE)!;
+      expect(c.value).toBe(nonceOf(state));
+      expect(c.maxAge).toBe(600);
+      expect(c.httpOnly).toBe(true);
+      expect(c.sameSite).toBe('lax');
+      expect(c.path).toBe('/api/rl/v1/spotify');
+    });
+
+    it('callback rejects a missing or mismatched nonce cookie, and clears the cookie', async () => {
+      const state = signState('ashton', NOW);
+      const q = `code=c&state=${encodeURIComponent(state)}`;
+      for (const cookie of [undefined, `${NONCE_COOKIE}=wrong`]) {
+        const res = await cb(q, cookie);
+        expect(res.headers.get('location')).toContain('spotify=error');
+        expect((res as NextResponse).cookies.get(NONCE_COOKIE)?.maxAge).toBe(0);
+      }
+      expect(await listAccounts(db())).toHaveLength(0);
+    });
+
+    it('callback rejects a player that is no longer on the roster', async () => {
+      const res = await link('ghost');
+      expect(res.headers.get('location')).toContain('spotify=error');
+      expect(await listAccounts(db())).toHaveLength(0);
+    });
+
+    it('callback clears the nonce cookie on success', async () => {
+      const res = await link();
+      expect(res.headers.get('location')).toContain('spotify=linked');
+      expect((res as NextResponse).cookies.get(NONCE_COOKIE)?.maxAge).toBe(0);
+    });
+
+    it('callback logs a sanitized line when linking fails', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      setSpotifyClientForTests({ ...fake, exchangeCode: async () => { throw new Error('exchange failed (400)'); } });
+      await link();
+      expect(spy).toHaveBeenCalledWith('[rl] spotify link failed', 'Error', 'exchange failed (400)');
+      spy.mockRestore();
+    });
+
     it('GET /spotify requires a cookie and never exposes tokens', async () => {
       expect((await spotifyGET(req('GET', '/spotify'))).status).toBe(401);
-      await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      await link();
       const res = await spotifyGET(req('GET', '/spotify', { cookie: COOKIE }));
       const text = await res.text();
       expect(text).not.toContain('refreshTokenEnc');
@@ -499,7 +552,7 @@ describe('rl v1 routes', () => {
     });
 
     it('DELETE /spotify/[id] unlinks, then 404s', async () => {
-      await cb(`code=c&state=${encodeURIComponent(signState('ashton', NOW))}`);
+      await link();
       const id = String((await listAccounts(db()))[0]._id);
       const ctx = { params: { id } };
       expect((await spotifyDELETE(req('DELETE', '/spotify/' + id), ctx)).status).toBe(401);

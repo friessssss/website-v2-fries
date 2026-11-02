@@ -27,8 +27,13 @@ export function signState(player: string, now: Date): string {
   return `${payload}.${hmac(process.env.RL_COOKIE_SECRET ?? '', payload)}`;
 }
 
-/** Returns the player slug for a valid, unexpired state, otherwise null. */
-export function verifyState(state: string | null, now: Date): string | null {
+export type LinkState = { player: string; nonce: string; exp: number };
+
+export const NONCE_COOKIE = 'rl_spotify_nonce';
+export const NONCE_PATH = '/api/rl/v1/spotify';
+
+/** Returns the parsed state when its signature is valid, otherwise null. Expiry is checked by the caller. */
+export function parseState(state: string | null): LinkState | null {
   const secret = process.env.RL_COOKIE_SECRET ?? '';
   if (!state || !secret) return null;
   const parts = state.split('.');
@@ -36,9 +41,9 @@ export function verifyState(state: string | null, now: Date): string | null {
   const [payload, sig] = parts;
   if (!safeEqual(sig, hmac(secret, payload))) return null;
   try {
-    const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { player?: unknown; exp?: unknown };
-    if (typeof d.player !== 'string' || typeof d.exp !== 'number' || d.exp < now.getTime()) return null;
-    return d.player;
+    const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as Partial<LinkState>;
+    if (typeof d.player !== 'string' || typeof d.nonce !== 'string' || typeof d.exp !== 'number') return null;
+    return { player: d.player, nonce: d.nonce, exp: d.exp };
   } catch {
     return null;
   }
