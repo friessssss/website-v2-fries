@@ -1,0 +1,20 @@
+{
+	"InstallationList": [
+		{
+			"InstallLocation": "C:\\Program Files\\Epic Games\\Fortnite",
+			"NamespaceId": "fn",
+			"ItemId": "1",
+			"ArtifactId": "Fortnite",
+			"AppVersion": "1.0",
+			"AppName": "Fortnite"
+		},
+		{
+			"InstallLocation": "E:\\Épîc Spiele\\rocketleague",
+			"NamespaceId": "9773aa1aa54f4f7b80e44bef04986cea",
+			"ItemId": "2",
+			"ArtifactId": "Sugar",
+			"AppVersion": "1.0",
+			"AppName": "Sugar"
+		}
+	]
+}

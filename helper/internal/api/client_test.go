@@ -126,3 +126,30 @@ func TestLatest(t *testing.T) {
 		t.Fatalf("%q %q %v", v, u, err)
 	}
 }
+
+func TestPingSendsKeyAndAccepts204(t *testing.T) {
+	var gotAuth, gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath, gotMethod = r.Header.Get("Authorization"), r.URL.Path, r.Method
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Key: "k1"}
+	if err := c.Ping(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != "POST" || gotPath != "/api/rl/v1/ping" || gotAuth != "Bearer k1" {
+		t.Fatalf("method=%q path=%q auth=%q", gotMethod, gotPath, gotAuth)
+	}
+}
+
+func TestPingUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Key: "bad"}
+	if err := c.Ping(context.Background()); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("got %v", err)
+	}
+}
