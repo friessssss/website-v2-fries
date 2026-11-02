@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, RefObject } from 'react';
 import type { FeedEvent, Player } from './apiTypes';
-import { actorLabel, formatClock, formatProgress, isSentLate } from './format';
+import { actorLabel, formatClock, formatDay, formatProgress, isSentLate } from './format';
 import { useUnlocked } from './useUnlocked';
 
 const TAG = 'rounded border border-line-10 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-ink-50';
@@ -31,12 +31,14 @@ function FeedRow({
   event,
   players,
   editable,
+  showDate,
   onChanged,
   onDeleted,
 }: {
   event: FeedEvent;
   players: Player[];
   editable: boolean;
+  showDate: boolean;
   onChanged: () => void;
   onDeleted: () => void;
 }) {
@@ -128,7 +130,9 @@ function FeedRow({
   return (
     <li className="flex flex-col gap-2 border-b border-line-10 py-3">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span className="w-12 shrink-0 font-mono text-xs text-ink-50">{time}</span>
+        <span className={`${showDate ? 'w-24' : 'w-12'} shrink-0 font-mono text-xs text-ink-50`}>
+          {showDate ? `${formatDay(new Date(event.occurredAt))} ${time}` : time}
+        </span>
         <span className={`w-24 shrink-0 text-lg ${opp ? 'text-danger' : 'text-ink-90'}`}>{name}</span>
         {event.song && (
           <span className="order-last min-w-0 basis-full truncate text-ink-60 sm:order-none sm:basis-0 sm:flex-1">
@@ -140,6 +144,7 @@ function FeedRow({
           </span>
         )}
         <span className="ml-auto flex shrink-0 flex-wrap gap-1.5">
+          {event.type !== 'goal' && <span className={TAG}>{event.type}</span>}
           <span className={TAG}>{event.source === 'helper' ? 'auto' : 'manual'}</span>
           {late ? <span className={TAG}>sent late</span> : unknown && <span className={TAG}>song unknown</span>}
         </span>
@@ -250,6 +255,9 @@ export default function GoalFeed({
   editable,
   emptyText,
   onChanged,
+  title = 'feed',
+  noun = 'goals',
+  showDate = false,
 }: {
   /** undefined while loading or after a failed first load */
   events: FeedEvent[] | undefined;
@@ -258,16 +266,21 @@ export default function GoalFeed({
   editable: boolean;
   emptyText: string;
   onChanged: () => void;
+  title?: string;
+  /** What the rows are, for the loading and error lines. */
+  noun?: string;
+  /** Prefix each time with its Denver day, for feeds that span sessions. */
+  showDate?: boolean;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   let body;
   if (events === undefined) {
     body = error ? (
       <p role="status" className="py-6 text-ink-60">
-        Can&apos;t load goals. Retrying.
+        Can&apos;t load {noun}. Retrying.
       </p>
     ) : (
-      <p className="py-6 font-mono text-xs text-ink-50">loading goals</p>
+      <p className="py-6 font-mono text-xs text-ink-50">loading {noun}</p>
     );
   } else if (events.length === 0) {
     body = <p className="py-6 text-ink-60">{emptyText}</p>;
@@ -280,6 +293,7 @@ export default function GoalFeed({
             event={e}
             players={players}
             editable={editable}
+            showDate={showDate}
             onChanged={onChanged}
             onDeleted={() => heading.current?.focus()}
           />
@@ -288,13 +302,13 @@ export default function GoalFeed({
     );
   }
   return (
-    <section aria-label="Goal feed" className="flex flex-col">
+    <section aria-label={title === 'feed' ? 'Goal feed' : title} className="flex flex-col">
       <h2 ref={heading} tabIndex={-1} className="border-b border-line-20 pb-2.5 font-mono text-xs text-ink-50 outline-none">
-        {'> feed'}
+        {`> ${title}`}
       </h2>
       {events !== undefined && error && (
         <p role="status" className="pt-2 font-mono text-xs text-ink-70">
-          Can&apos;t refresh goals. Retrying.
+          Can&apos;t refresh {noun}. Retrying.
         </p>
       )}
       {body}

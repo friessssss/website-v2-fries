@@ -85,6 +85,8 @@ export async function sessionStats(
   scope: Scope,
   now: Date,
   type: EventType = 'goal',
+  /** Restricts the songs breakdown (only) to events heard on this playlist. */
+  playlist?: string,
 ) {
   const roster = await listPlayers(db);
   const { filter, sessionId, empty } = await resolveScope(db, scope, now);
@@ -103,7 +105,10 @@ export async function sessionStats(
     for (const r of rows) goalCounts.set(r._id, r.count);
 
     const goalSongs = await songBreakdown(db, filter, 'goal');
-    songs = type === 'goal' ? goalSongs : await songBreakdown(db, filter, type);
+    songs =
+      type === 'goal' && !playlist
+        ? goalSongs
+        : await songBreakdown(db, playlist ? { ...filter, playlist } : filter, type);
     const best = goalSongs.slice().sort(
       (a, b) => b.goalsFor - a.goalsFor || a.song.localeCompare(b.song),
     )[0];

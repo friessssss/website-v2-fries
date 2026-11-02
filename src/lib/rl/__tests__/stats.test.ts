@@ -109,6 +109,18 @@ describe('stats', () => {
       expect(s.topSong).toEqual(NIGHT.topSong);
     });
 
+    it('applies the playlist parameter to the songs breakdown only', async () => {
+      const db = getDb();
+      await seedNight(db);
+      await collections(db).events.updateMany({ trackId: 'tB' }, { $set: { playlist: 'Chill' } });
+      const s = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', 'Chill');
+      expect(s.songs.map((x) => x.trackId)).toEqual(['tB']);
+      expect(s.goalsFor).toBe(NIGHT.goalsFor);
+      expect(s.topSong).toEqual(NIGHT.topSong);
+      const none = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', 'Nope');
+      expect(none.songs).toEqual([]);
+    });
+
     it('scopes to a specific session id and to all', async () => {
       const db = getDb();
       await seedNight(db);

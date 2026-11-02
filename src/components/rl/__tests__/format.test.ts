@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actorLabel, formatClock, formatProgress, isSentLate } from '../format';
+import { actorLabel, formatClock, formatDay, formatProgress, isSentLate } from '../format';
 
 const ROSTER = [
   { slug: 'ashton', displayName: 'Ashton' },
@@ -47,5 +47,13 @@ describe('isSentLate', () => {
     expect(isSentLate({ ...base, createdAt: '2026-11-02T04:02:00.000Z' })).toBe(false);
     expect(isSentLate({ ...base, source: 'manual', createdAt: '2026-11-02T04:05:00.000Z' })).toBe(false);
     expect(isSentLate({ ...base, songResolved: true, createdAt: '2026-11-02T04:05:00.000Z' })).toBe(false);
+  });
+});
+
+describe('formatDay', () => {
+  it('shows the Denver calendar day', () => {
+    // 04:41 UTC on Nov 2 is still Nov 1 in Denver
+    expect(formatDay(new Date('2026-11-02T04:41:00Z'))).toBe('Nov 1');
+    expect(formatDay(new Date('2026-10-15T20:00:00Z'))).toBe('Oct 15');
   });
 });

@@ -22,6 +22,8 @@ export type StatsResponse = {
   goalsAgainst: number;
   leaderboard: LeaderboardRow[];
   topSong: { song: string; artist: string; goals: number } | null;
+  /** Per-song counts by actor for the requested `type` (default goal). */
+  songs: SongStatRow[];
 };
 
 export type FeedEvent = {
@@ -38,3 +40,27 @@ export type FeedEvent = {
 };
 
 export type SessionSummary = { id: string; startedAt: string; goalsFor: number; goalsAgainst: number };
+
+export type StatType = 'goal' | 'assist' | 'save' | 'demo';
+export type TypeCounts = Record<StatType, number>;
+export type ActorCount = { actor: string; count: number };
+
+export type PlayerStatsResponse = {
+  player: Player & { active: boolean };
+  session: TypeCounts;
+  allTime: TypeCounts;
+  topSongs: Record<StatType, Array<{ song: string; artist: string; count: number }>>;
+  demoRecord: { victims: ActorCount[]; demotedBy: ActorCount[] };
+  favAssister: ActorCount | null;
+  favScorerAssisted: ActorCount | null;
+  recent: FeedEvent[];
+};
+
+export type SongStatRow = {
+  trackId: string | null;
+  song: string;
+  artist: string;
+  byActor: Record<string, number>;
+  goalsFor: number;
+  goalsAgainst: number;
+};

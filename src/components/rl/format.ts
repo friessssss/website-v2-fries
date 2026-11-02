@@ -8,6 +8,13 @@ const clock = new Intl.DateTimeFormat('en-GB', {
   hourCycle: 'h23',
 });
 
+const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
+
+/** "Nov 1", America/Denver. */
+export function formatDay(d: Date): string {
+  return day.format(d);
+}
+
 /** "21:41", 24-hour, America/Denver. */
 export function formatClock(d: Date): string {
   return clock.format(d);

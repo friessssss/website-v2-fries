@@ -13,10 +13,13 @@ export default function SessionPicker({
   value,
   sessions,
   onChange,
+  allTime = false,
 }: {
   value: string;
   sessions: SessionSummary[];
   onChange: (session: string) => void;
+  /** Adds an "all time" option (value "all"). */
+  allTime?: boolean;
 }) {
   return (
     <label className="flex items-center gap-2 font-mono text-xs text-ink-50">
@@ -26,6 +29,7 @@ export default function SessionPicker({
         onChange={(e) => onChange(e.target.value)}
         className="rl-focus rl-chip bg-transparent px-2 py-1 font-mono text-xs text-ink-70"
       >
+        {allTime && <option value="all">all time</option>}
         <option value="current">tonight</option>
         {sessions.map((s) => (
           <option key={s.id} value={s.id}>
