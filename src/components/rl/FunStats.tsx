@@ -60,6 +60,7 @@ export default function FunStats({
   }
   const { demoLeaderboard, demoGrid, demoAnthem, brickWall, playmaker, victorySong, winRateBySong, nightOfTheNight } = data;
   const topDemo = demoLeaderboard.find((r) => r.count > 0);
+  const nights = [...nightOfTheNight].sort((a, b) => b.total - a.total || a.displayName.localeCompare(b.displayName));
   const gridActors = demoGrid.actors.map((actor) => ({ actor, label: actorLabel(actor, players) }));
 
   return (
@@ -148,16 +149,16 @@ export default function FunStats({
         <StatCard
           title="night of the night"
           value={
-            nightOfTheNight[0] ? (
-              <Name actor={[...nightOfTheNight].sort((a, b) => b.total - a.total)[0].actor} players={players} />
+            nights[0] ? (
+              <Name actor={nights[0].actor} players={players} />
             ) : (
               <Nothing>No sessions yet.</Nothing>
             )
           }
           detail={
-            nightOfTheNight[0] && (
+            nights[0] && (
               <Rows
-                rows={nightOfTheNight.map((r) => ({
+                rows={nights.map((r) => ({
                   key: r.actor,
                   left: `${r.displayName} · ${sessionDay(r.sessionId)}`,
                   right: String(r.total),

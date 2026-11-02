@@ -1,22 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import FunStats from '@/components/rl/FunStats';
 import GlyphField from '@/components/rl/GlyphField';
 import RLNav from '@/components/rl/RLNav';
 import SessionPicker from '@/components/rl/SessionPicker';
 import type { Player, SessionSummary } from '@/components/rl/apiTypes';
-import AnalyticsFilters, { type Filters } from '@/components/rl/analytics/AnalyticsFilters';
+import AnalyticsFilters, { toggled, type Filters } from '@/components/rl/analytics/AnalyticsFilters';
 import AnalyticsSummary from '@/components/rl/analytics/AnalyticsSummary';
 import ArtistBarChart from '@/components/rl/analytics/ArtistBarChart';
 import SongBarChart from '@/components/rl/analytics/SongBarChart';
 import SongRankings from '@/components/rl/analytics/SongRankings';
 import TimelineChart from '@/components/rl/analytics/TimelineChart';
+import { seriesOrder } from '@/components/rl/analytics/chartTheme';
 import { playersIn, type AnalyticsData, type TimelineData } from '@/components/rl/analytics/types';
 import { usePlaylists } from '@/components/rl/analytics/usePlaylists';
 import type { FunStats as FunStatsData } from '@/lib/rl/funstats';
 import { usePoll } from '@/components/rl/useRlApi';
-import { useSessionParam } from '@/components/rl/useSessionParam';
+import { useSessionFallback, useSessionParam } from '@/components/rl/useSessionParam';
 
 const POLL_MS = 60000;
 
@@ -47,16 +48,24 @@ export default function AnalyticsPage() {
   const sessions = usePoll<{ sessions: SessionSummary[] }>('/api/rl/v1/sessions', POLL_MS);
   const roster = usePoll<{ players: Player[] }>('/api/rl/v1/players', POLL_MS);
   const playlists = usePlaylists();
+  useSessionFallback(session, setSession, 'all', sessions.data?.sessions, fun.error);
 
   const data = analytics.data;
-  const players = useMemo(() => playersIn(data?.songs ?? []), [data]);
+  const rosterPlayers = roster.data?.players;
+  // stable colour order by roster name; chips only for players who appear in the data
+  const players = useMemo(() => seriesOrder(rosterPlayers ?? [], playersIn(data?.songs ?? [])), [rosterPlayers, data]);
+  const present = useMemo(() => {
+    const seen = new Set(playersIn(data?.songs ?? []));
+    return players.filter((p) => seen.has(p));
+  }, [players, data]);
+  const onToggle = useCallback((p: string) => setFilters((f) => ({ ...f, hidden: toggled(f.hidden, p) })), []);
   const mode = filters.chartType === 'traditional' ? 'traditional' : 'enhanced';
 
   let chart: React.ReactNode;
   if (timeline) {
     chart = timelineData.data ? (
       timelineData.data.timeline.length ? (
-        <TimelineChart timeline={timelineData.data.timeline} groupBy={filters.groupBy} players={players} hidden={filters.hidden} />
+        <TimelineChart timeline={timelineData.data.timeline} groupBy={filters.groupBy} players={players} hidden={filters.hidden} onToggle={onToggle} />
       ) : null
     ) : (
       <Pending error={Boolean(timelineData.error)} what="the timeline" />
@@ -64,9 +73,9 @@ export default function AnalyticsPage() {
   } else if (data) {
     chart =
       filters.viewMode === 'songs' ? (
-        <SongBarChart songs={data.songs} players={players} hidden={filters.hidden} mode={mode} />
+        <SongBarChart songs={data.songs} players={players} hidden={filters.hidden} mode={mode} onToggle={onToggle} />
       ) : (
-        <ArtistBarChart artists={data.artists} players={players} hidden={filters.hidden} mode={mode} />
+        <ArtistBarChart artists={data.artists} players={players} hidden={filters.hidden} mode={mode} onToggle={onToggle} />
       );
   }
 
@@ -80,7 +89,7 @@ export default function AnalyticsPage() {
         <h1 className="text-[30px] leading-none tracking-[-0.025em] text-ink-bright md:text-[48px]">Analytics</h1>
 
         <section aria-label="Goals by song" className="flex flex-col gap-6">
-          <AnalyticsFilters value={filters} onChange={setFilters} playlists={playlists} players={players} />
+          <AnalyticsFilters value={filters} onChange={setFilters} playlists={playlists} players={present} />
           {!data ? (
             <Pending error={Boolean(analytics.error)} what="analytics" />
           ) : data.songs.length === 0 ? (

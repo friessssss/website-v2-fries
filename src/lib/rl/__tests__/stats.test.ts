@@ -113,12 +113,29 @@ describe('stats', () => {
       const db = getDb();
       await seedNight(db);
       await collections(db).events.updateMany({ trackId: 'tB' }, { $set: { playlist: 'Chill' } });
-      const s = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', 'Chill');
+      const s = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', { playlist: 'Chill' });
       expect(s.songs.map((x) => x.trackId)).toEqual(['tB']);
       expect(s.goalsFor).toBe(NIGHT.goalsFor);
       expect(s.topSong).toEqual(NIGHT.topSong);
-      const none = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', 'Nope');
+      const none = await sessionStats(db, { session: 'current' }, NIGHT.now, 'goal', { playlist: 'Nope' });
       expect(none.songs).toEqual([]);
+    });
+
+    it('applies the timeFilter window to the songs breakdown only', async () => {
+      const db = getDb();
+      await seedNight(db);
+      const old = new Date(NIGHT.now.getTime() - 60 * 86_400_000);
+      await collections(db).events.insertOne({
+        type: 'goal', actor: 'jake', song: 'Ancient', artist: 'Old', songResolved: true,
+        occurredAt: old, sessionId: '2026-08-01-2000', source: 'helper', createdAt: old,
+      });
+      const month = await sessionStats(db, { session: 'all' }, NIGHT.now, 'goal', { timeFilter: 'month' });
+      expect(month.songs.map((x) => x.song)).not.toContain('Ancient');
+      expect(month.goalsFor).toBe(NIGHT.goalsFor + 1);
+      const months3 = await sessionStats(db, { session: 'all' }, NIGHT.now, 'goal', { timeFilter: '3months' });
+      expect(months3.songs.map((x) => x.song)).toContain('Ancient');
+      const life = await sessionStats(db, { session: 'all' }, NIGHT.now, 'goal', { timeFilter: 'lifetime' });
+      expect(life.songs.map((x) => x.song)).toContain('Ancient');
     });
 
     it('scopes to a specific session id and to all', async () => {

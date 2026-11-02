@@ -395,6 +395,22 @@ describe('rl v1 routes', () => {
       expect(nf.status).toBe(404);
     });
 
+    it('GET /stats scopes songs by timeFilter and playlist, rejecting unknown windows', async () => {
+      await seedNight(db());
+      const old = new Date(NOW.getTime() - 60 * 86_400_000);
+      await collections(db()).events.insertOne({
+        type: 'goal', actor: 'jake', song: 'Ancient', artist: 'Old', songResolved: true, playlist: 'Chill',
+        occurredAt: old, sessionId: '2026-08-01-2000', source: 'helper', createdAt: old,
+      });
+      const songs = async (q: string) =>
+        (await body(await statsGET(req('GET', `/stats?session=all${q}`)))).songs.map((s: any) => s.song);
+      expect(await songs('&timeFilter=week')).not.toContain('Ancient');
+      expect(await songs('&timeFilter=lifetime')).toContain('Ancient');
+      expect(await songs('&playlist=Chill')).toEqual(['Ancient']);
+      expect((await statsGET(req('GET', '/stats?session=all&timeFilter=constructor'))).status).toBe(400);
+      expect((await statsGET(req('GET', '/stats?session=all&timeFilter=decade'))).status).toBe(400);
+    });
+
     it('now-playing is null without Spotify config', async () => {
       const res = await nowGET(req('GET', '/now-playing'));
       expect(await body(res)).toEqual({ track: null, hostSlug: null });

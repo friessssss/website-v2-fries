@@ -56,7 +56,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function PlayerPage({ params }: { params: { slug: string } }) {
   const slug = params.slug;
-  const [scope, setScope] = useSessionParam('current');
+  const [scope, setScope] = useSessionParam('current', (raw) => (raw === 'all' ? 'all' : 'current'));
   const stats = usePoll<PlayerStatsResponse>(`/api/rl/v1/players/${encodeURIComponent(slug)}/stats`, 15000);
   const roster = usePoll<{ players: Player[] }>('/api/rl/v1/players', 60000);
   const players = roster.data?.players ?? [];

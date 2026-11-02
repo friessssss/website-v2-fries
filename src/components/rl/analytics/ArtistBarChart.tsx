@@ -12,11 +12,13 @@ export default function ArtistBarChart({
   players,
   hidden,
   mode,
+  onToggle,
 }: {
   artists: ArtistAnalytics[];
   players: string[];
   hidden: Set<string>;
   mode: 'enhanced' | 'traditional';
+  onToggle: (player: string) => void;
 }) {
   const data = useMemo(() => {
     const rows = artists.slice(0, TOP_N);
@@ -32,8 +34,10 @@ export default function ArtistBarChart({
         absTicks: mode === 'enhanced',
         rotate: true,
         yTitle: mode === 'enhanced' ? 'goals for / against' : 'goals',
+        players,
+        onToggle,
       }),
-    [mode],
+    [mode, players, onToggle],
   );
   return <Chart type="bar" data={data} options={options} aria-label="Goals per artist by player" role="img" />;
 }

@@ -16,16 +16,24 @@ export function Select<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: T;
   options: [T, string][];
   onChange: (v: T) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 font-mono text-xs text-ink-50">
+    <label className={`flex items-center gap-2 font-mono text-xs text-ink-50 ${disabled ? 'opacity-50' : ''}`}>
       {`> ${label}`}
-      <select value={value} onChange={(e) => onChange(e.target.value as T)} className={SELECT}>
+      <select
+        value={value}
+        disabled={disabled}
+        title={disabled ? 'Period applies to all time' : undefined}
+        onChange={(e) => onChange(e.target.value as T)}
+        className={`${SELECT} disabled:cursor-not-allowed`}
+      >
         {options.map(([v, text]) => (
           <option key={v} value={v}>
             {text}
@@ -34,6 +42,13 @@ export function Select<T extends string>({
       </select>
     </label>
   );
+}
+
+export function toggled(hidden: Set<string>, player: string): Set<string> {
+  const next = new Set(hidden);
+  if (next.has(player)) next.delete(player);
+  else next.add(player);
+  return next;
 }
 
 export type Filters = {
@@ -63,12 +78,7 @@ export default function AnalyticsFilters({
   extra?: ReactNode;
 }) {
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => onChange({ ...value, [k]: v });
-  const toggle = (p: string) => {
-    const hidden = new Set(value.hidden);
-    if (hidden.has(p)) hidden.delete(p);
-    else hidden.add(p);
-    set('hidden', hidden);
-  };
+  const toggle = (p: string) => set('hidden', toggled(value.hidden, p));
   const timeline = value.chartType === 'timeline';
   return (
     <div className="flex flex-col gap-3">
@@ -118,7 +128,7 @@ export default function AnalyticsFilters({
         )}
         {extra}
       </div>
-      {show.chart && value.chartType !== 'traditional' && players.length > 0 && (
+      {show.chart && players.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-ink-50">
           {'> players'}
           {players.map((p) => {

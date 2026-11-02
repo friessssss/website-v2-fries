@@ -1,7 +1,13 @@
 import type { Actor } from '@/lib/rl/types';
 
 const INK_RGB = '245, 248, 241'; // #f5f8f1
-const INK_LADDER = [0.9, 0.7, 0.5, 0.35];
+/** Six ink steps, one per roster player. Applied to both fill and border. */
+const INK_LADDER = [0.92, 0.76, 0.62, 0.48, 0.36, 0.26];
+const TEAMMATE_ALPHA = 0.55;
+export const TEAMMATE = 'Teammate';
+/** Second channel for timeline lines from the fourth player on. */
+const DASHES: number[][] = [[6, 3], [2, 3], [10, 3, 2, 3]];
+const TEAMMATE_DASH = [4, 4];
 export const DANGER = '#ef4444';
 
 /** Shared look for every RL chart: Abel text, mono ticks, ink-60 ticks, line-10 grid, outline-only legend boxes. */
@@ -14,11 +20,42 @@ export const RL_CHART_DEFAULTS = {
   legend: { boxFill: 'transparent', useBorderRadius: false, boxSize: 10 },
 } as const;
 
-/** Opponent is always danger red; everyone else cycles the ink ladder. */
+/**
+ * Opponent is always danger red and Teammate a fixed ink step (drawn hatched / dashed by the charts).
+ * Roster players take the ink ladder by their stable `seriesOrder` index.
+ */
 export function seriesColor(index: number, actor: Actor): string {
-  if (actor.toLowerCase() === 'opponent') return DANGER;
+  const a = actor.toLowerCase();
+  if (a === 'opponent') return DANGER;
+  if (a === 'teammate') return `rgba(${INK_RGB}, ${TEAMMATE_ALPHA})`;
   const alpha = INK_LADDER[((index % INK_LADDER.length) + INK_LADDER.length) % INK_LADDER.length];
   return `rgba(${INK_RGB}, ${alpha})`;
+}
+
+/** Line dash for a timeline series: solid for the first three players, patterns after, dashed Teammate. */
+export function lineDash(index: number, actor: Actor): number[] {
+  const a = actor.toLowerCase();
+  if (a === 'opponent') return [];
+  if (a === 'teammate') return TEAMMATE_DASH;
+  return index < 3 ? [] : DASHES[(index - 3) % DASHES.length];
+}
+
+/**
+ * Stable series order by display name: active roster players alphabetically, then any other names
+ * seen in the data, then Teammate. Index in this list is the colour index, so colours never shift with filters.
+ */
+export function seriesOrder(
+  roster: { displayName: string; active?: boolean }[],
+  seen: string[] = [],
+): string[] {
+  const names = roster
+    .filter((p) => p.active !== false)
+    .map((p) => p.displayName)
+    .sort((a, b) => a.localeCompare(b));
+  const extra = seen
+    .filter((n) => !names.includes(n) && n.toLowerCase() !== 'opponent' && n !== TEAMMATE)
+    .sort((a, b) => a.localeCompare(b));
+  return [...names, ...extra, TEAMMATE];
 }
 
 /** Same colour at a different alpha, for bar fills under an ink outline. */

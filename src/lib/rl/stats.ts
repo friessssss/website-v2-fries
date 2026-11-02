@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb';
 import { collections } from './db';
+import { DAY_MS, WINDOW_DAYS } from './legacyAnalytics';
 import { listPlayers } from './players';
 import { currentSessionId } from './sessions';
 import type { Actor, EventDoc, EventType, PlayerDoc } from './types';
@@ -85,8 +86,11 @@ export async function sessionStats(
   scope: Scope,
   now: Date,
   type: EventType = 'goal',
-  /** Restricts the songs breakdown (only) to events heard on this playlist. */
-  playlist?: string,
+  /**
+   * Narrow the songs breakdown (only): `playlist` to events heard on that playlist,
+   * `timeFilter` (week | month | 3months | year | lifetime) to a rolling window ending at `now`.
+   */
+  { playlist, timeFilter }: { playlist?: string; timeFilter?: string } = {},
 ) {
   const roster = await listPlayers(db);
   const { filter, sessionId, empty } = await resolveScope(db, scope, now);
@@ -105,10 +109,12 @@ export async function sessionStats(
     for (const r of rows) goalCounts.set(r._id, r.count);
 
     const goalSongs = await songBreakdown(db, filter, 'goal');
+    const songFilter: Record<string, unknown> = { ...filter };
+    if (playlist) songFilter.playlist = playlist;
+    const days = timeFilter && Object.prototype.hasOwnProperty.call(WINDOW_DAYS, timeFilter) ? WINDOW_DAYS[timeFilter] : undefined;
+    if (days) songFilter.occurredAt = { $gte: new Date(now.getTime() - days * DAY_MS) };
     songs =
-      type === 'goal' && !playlist
-        ? goalSongs
-        : await songBreakdown(db, playlist ? { ...filter, playlist } : filter, type);
+      type === 'goal' && !playlist && !days ? goalSongs : await songBreakdown(db, songFilter, type);
     const best = goalSongs.slice().sort(
       (a, b) => b.goalsFor - a.goalsFor || a.song.localeCompare(b.song),
     )[0];

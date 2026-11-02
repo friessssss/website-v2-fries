@@ -5,12 +5,12 @@ import GlyphField from '@/components/rl/GlyphField';
 import RLNav from '@/components/rl/RLNav';
 import SessionPicker from '@/components/rl/SessionPicker';
 import type { Player, SessionSummary, SongStatRow, StatType, StatsResponse } from '@/components/rl/apiTypes';
-import { Select } from '@/components/rl/analytics/AnalyticsFilters';
+import { Select, TIME_FILTERS } from '@/components/rl/analytics/AnalyticsFilters';
 import { cleanSongName, type ViewMode } from '@/components/rl/analytics/types';
 import { usePlaylists } from '@/components/rl/analytics/usePlaylists';
 import { actorLabel } from '@/components/rl/format';
 import { usePoll } from '@/components/rl/useRlApi';
-import { useSessionParam } from '@/components/rl/useSessionParam';
+import { useSessionFallback, useSessionParam } from '@/components/rl/useSessionParam';
 
 const TABS: { type: StatType; label: string }[] = [
   { type: 'goal', label: 'goals' },
@@ -60,13 +60,18 @@ export default function SongsPage() {
   const [type, setType] = useState<StatType>('goal');
   const [view, setView] = useState<ViewMode>('songs');
   const [playlist, setPlaylist] = useState('');
+  const [timeFilter, setTimeFilter] = useState('lifetime');
+  const allTime = session === 'all';
 
   const params = new URLSearchParams({ session, type });
   if (playlist) params.set('playlist', playlist);
+  // the period only narrows "all time"; a single session is already its own window
+  if (allTime && timeFilter !== 'lifetime') params.set('timeFilter', timeFilter);
   const stats = usePoll<StatsResponse>(`/api/rl/v1/stats?${params}`, 60000);
   const sessions = usePoll<{ sessions: SessionSummary[] }>('/api/rl/v1/sessions', 60000);
   const roster = usePoll<{ players: Player[] }>('/api/rl/v1/players', 60000);
   const playlists = usePlaylists();
+  useSessionFallback(session, setSession, 'all', sessions.data?.sessions, stats.error);
   const players = roster.data?.players ?? [];
 
   const goals = type === 'goal';
@@ -151,6 +156,7 @@ export default function SongsPage() {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <SessionPicker value={session} sessions={sessions.data?.sessions ?? []} onChange={setSession} allTime />
+          <Select label="period" value={timeFilter} options={TIME_FILTERS} onChange={setTimeFilter} disabled={!allTime} />
           <Select<ViewMode> label="view" value={view} options={[['songs', 'songs'], ['artists', 'artists']]} onChange={setView} />
           <Select
             label="playlist"

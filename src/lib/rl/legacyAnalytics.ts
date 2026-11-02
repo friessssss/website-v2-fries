@@ -13,8 +13,9 @@ type LegacyGoal = {
   playlist?: string;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const WINDOW_DAYS: Record<string, number> = { week: 7, month: 30, '3months': 90, year: 365 };
+export const DAY_MS = 24 * 60 * 60 * 1000;
+/** Rolling windows behind the `timeFilter` values; 'lifetime' (absent here) means no bound. */
+export const WINDOW_DAYS: Record<string, number> = { week: 7, month: 30, '3months': 90, year: 365 };
 const ACTOR_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
 
 type PlayerGoals = { player: string; goals: number };

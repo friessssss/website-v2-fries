@@ -13,11 +13,13 @@ export default function SongBarChart({
   players,
   hidden,
   mode,
+  onToggle,
 }: {
   songs: SongAnalytics[];
   players: string[];
   hidden: Set<string>;
   mode: 'enhanced' | 'traditional';
+  onToggle: (player: string) => void;
 }) {
   const data = useMemo(() => {
     const rows = songs.slice(0, TOP_N);
@@ -33,8 +35,10 @@ export default function SongBarChart({
         absTicks: mode === 'enhanced',
         rotate: true,
         yTitle: mode === 'enhanced' ? 'goals for / against' : 'goals',
+        players,
+        onToggle,
       }),
-    [mode],
+    [mode, players, onToggle],
   );
   return <Chart type="bar" data={data} options={options} aria-label="Goals per song by player" role="img" />;
 }
