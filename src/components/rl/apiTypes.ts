@@ -34,7 +34,7 @@ export type FeedEvent = {
   artist: string | null;
   progressMs?: number | null;
   songResolved: boolean;
-  source: 'helper' | 'manual' | 'legacy';
+  source: 'helper' | 'manual' | 'legacy' | 'import';
   occurredAt: string;
   createdAt: string;
 };

@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "rl:migrate": "tsx scripts/rl-migrate.ts",
+    "rl:import-christmas": "tsx scripts/rl-import-christmas.ts",
     "rl:seed": "tsx scripts/rl-dev-seed.ts"
   },
   "dependencies": {

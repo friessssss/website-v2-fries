@@ -47,7 +47,7 @@ export interface EventDoc {
   sessionId: string;
   matchGuid?: string;
   gameTime?: number;
-  source: 'helper' | 'manual' | 'legacy';
+  source: 'helper' | 'manual' | 'legacy' | 'import';
   reportedBy?: ObjectId;
   dedupeKey?: string;
   createdAt: Date;

@@ -7,6 +7,7 @@ import { actorLabel, formatClock, formatDay, formatProgress, isSentLate } from '
 import { useUnlocked } from './useUnlocked';
 
 const TAG = 'rounded border border-line-10 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-ink-50';
+const SOURCE_TAG: Record<string, string> = { helper: 'auto', import: 'imported' };
 const ACTION =
   'rl-focus font-mono text-xs text-ink-50 underline-offset-4 transition-colors duration-200 hover:text-ink-70 hover:underline disabled:opacity-50';
 const INPUT = 'rl-focus rl-chip min-w-0 bg-transparent px-2 py-1 font-mono text-xs text-ink';
@@ -145,7 +146,7 @@ function FeedRow({
         )}
         <span className="ml-auto flex shrink-0 flex-wrap gap-1.5">
           {event.type !== 'goal' && <span className={TAG}>{event.type}</span>}
-          <span className={TAG}>{event.source === 'helper' ? 'auto' : 'manual'}</span>
+          <span className={TAG}>{SOURCE_TAG[event.source] ?? 'manual'}</span>
           {late ? <span className={TAG}>sent late</span> : unknown && <span className={TAG}>song unknown</span>}
         </span>
       </div>
