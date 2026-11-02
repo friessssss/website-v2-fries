@@ -711,3 +711,70 @@ func TestInMatchFollowsCurrentSource(t *testing.T) {
 		t.Fatal("match over")
 	}
 }
+
+// After 5 consecutive single-event rejections the site, not the events, is
+// the problem: stop dropping and back off (final review I3).
+func TestConsecutiveRejectionsStopDroppingAndBackOff(t *testing.T) {
+	var reject atomic.Bool
+	reject.Store(true)
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		if reject.Load() {
+			return nil, api.ErrRejected{Status: 400, Body: "bad"}
+		}
+		return okAll(call, evs)
+	})
+	h.dialErr.Store(true)
+	for i := 1; i <= 8; i++ {
+		h.q.Push(goalEv(i))
+	}
+	h.start()
+	// Batch (1 call) + singles: 4 dropped, the 5th is kept and backed off.
+	waitFor(t, "backoff", func() bool { return len(h.sleepsOf(DialRetry, HeartbeatEvery, FlushEvery)) >= 2 })
+	if n := h.q.Len(); n != 4 {
+		t.Fatalf("queue %d, want 4 kept", n)
+	}
+	got := h.sleepsOf(DialRetry, HeartbeatEvery, FlushEvery)
+	if got[0] != 4*time.Second || got[1] != 8*time.Second {
+		t.Fatalf("sleeps %v", got) // 2s is FlushEvery (filtered); backoff doubles from there
+	}
+	if !hasState(h, Queued) {
+		t.Fatal("want Queued while backing off")
+	}
+	reject.Store(false)
+	waitFor(t, "kept events delivered", func() bool { return h.q.Len() == 0 })
+	if d := h.poster.Delivered(); len(d) != 4 || d[0].At.Second() != 5 {
+		t.Fatalf("delivered %+v", d)
+	}
+}
+
+// dropFailQueue fails Drop while fail is set.
+type dropFailQueue struct {
+	*queue.Queue
+	fail  atomic.Bool
+	drops atomic.Int32
+}
+
+func (f *dropFailQueue) Drop(n int) error {
+	f.drops.Add(1)
+	if f.fail.Load() {
+		return errors.New("disk full")
+	}
+	return f.Queue.Drop(n)
+}
+
+func TestDropFailureAfterRejectionBacksOff(t *testing.T) {
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		return nil, api.ErrRejected{Status: 400, Body: "bad"}
+	})
+	dq := &dropFailQueue{Queue: h.q}
+	dq.fail.Store(true)
+	h.deps.Queue = dq
+	h.dialErr.Store(true)
+	h.q.Push(goalEv(1))
+	h.start()
+	waitFor(t, "two drop attempts", func() bool { return dq.drops.Load() >= 2 })
+	got := h.sleepsOf(DialRetry, HeartbeatEvery)
+	if len(got) == 0 || got[0] != FlushEvery {
+		t.Fatalf("no backoff between failed drops: sleeps %v", got)
+	}
+}

@@ -48,6 +48,9 @@ const (
 	HeartbeatEvery = 30 * time.Second
 	BackoffMax     = 60 * time.Second
 	BatchSize      = 50
+	// MaxRejectStreak consecutive single-event rejections mean the site, not
+	// the events, is at fault: the next one is kept and retried with backoff.
+	MaxRejectStreak = 5
 )
 
 // Stream is one live connection to the Stats API.
@@ -394,6 +397,19 @@ func (a *App) heartbeat(ctx context.Context) {
 func (a *App) flusher(ctx context.Context) {
 	backoff := FlushEvery
 	singles := 0 // events at the queue front still to be sent one at a time
+	rejects := 0 // consecutive single-event rejections
+	// retryLater marks the upload as failing and sleeps the current backoff.
+	retryLater := func() bool {
+		a.mu.Lock()
+		a.lastFailed = true
+		a.mu.Unlock()
+		a.update()
+		wait := backoff
+		if backoff *= 2; backoff > BackoffMax {
+			backoff = BackoffMax
+		}
+		return a.d.Sleep(ctx, wait) == nil
+	}
 	for {
 		act, ok := a.waitFlushable(ctx)
 		if !ok {
@@ -413,15 +429,22 @@ func (a *App) flusher(ctx context.Context) {
 			continue
 		}
 		results, err := a.d.Poster.PostEvents(act, batch, a.d.Now())
+		var rej api.ErrRejected
 		switch {
 		case err == nil:
+			rejects = 0
+			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
+				// The batch would be re-sent (the site dedupes); don't spin.
+				a.d.Logf("queue drop failed: %v", derr)
+				if !retryLater() {
+					return
+				}
+				continue
+			}
 			backoff = FlushEvery
 			a.mu.Lock()
 			a.lastFailed = false
 			a.mu.Unlock()
-			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
-				a.d.Logf("queue drop failed: %v", derr)
-			}
 			singles = max(singles-len(batch), 0)
 			a.notifyGoals(batch, results)
 			a.update()
@@ -441,33 +464,28 @@ func (a *App) flusher(ctx context.Context) {
 			a.mu.Unlock()
 			a.d.Logf("upload unauthorized: pairing required")
 			a.update()
-		default:
-			var rej api.ErrRejected
-			if errors.As(err, &rej) {
-				if len(batch) > 1 {
-					// One bad event must not discard the good ones: resend individually.
-					a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
-					singles = len(batch)
-					continue
+		case errors.As(err, &rej) && len(batch) > 1:
+			// One bad event must not discard the good ones: resend individually.
+			a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
+			singles = len(batch)
+		case errors.As(err, &rej) && rejects+1 < MaxRejectStreak:
+			rejects++
+			a.d.Logf("dropping event rejected by the site: %v", err)
+			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
+				a.d.Logf("queue drop failed: %v", derr)
+				if !retryLater() {
+					return
 				}
-				a.d.Logf("dropping event rejected by the site: %v", err)
-				singles = max(singles-1, 0)
-				if derr := a.d.Queue.Drop(len(batch)); derr != nil {
-					a.d.Logf("queue drop failed: %v", derr)
-				}
-				a.update()
 				continue
 			}
-			// ErrRetryable or anything unclassified.
-			a.mu.Lock()
-			a.lastFailed = true
-			a.mu.Unlock()
+			singles = max(singles-1, 0)
 			a.update()
-			wait := backoff
-			if backoff *= 2; backoff > BackoffMax {
-				backoff = BackoffMax
+		default:
+			if errors.As(err, &rej) {
+				a.d.Logf("%d+ rejections in a row (%v): treating it as a site problem; keeping the event and backing off", MaxRejectStreak, err)
 			}
-			if a.d.Sleep(ctx, wait) != nil {
+			// ErrRetryable, a rejection streak, or anything unclassified.
+			if !retryLater() {
 				return
 			}
 		}
