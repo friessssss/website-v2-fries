@@ -75,8 +75,13 @@ func run() int {
 	reset := flag.Bool("reset", false, "delete the stored API key and exit")
 	relaunched := flag.Bool("relaunched", false, "internal: started by an update or restart")
 	patchIni := flag.String("patch-ini", "", "internal: patch this Stats API ini (run elevated) and exit")
+	replay := flag.String("replay", "", "upload a Stats API capture file to --base-url and exit (testing)")
 	flag.Parse()
 	args := os.Args[1:]
+
+	if *replay != "" {
+		return runReplay(*base, *replay)
+	}
 
 	if *patchIni != "" {
 		return setup.PatchIni(*patchIni, statsini.OSFS{})

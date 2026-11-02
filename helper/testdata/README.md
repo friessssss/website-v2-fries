@@ -1,4 +1,4 @@
-# Stats API capture notes (fill in after capturing)
+# Stats API capture notes
 
 ## How to capture (on the gaming PC)
 
@@ -34,32 +34,51 @@ Rename the best TCP capture to `match-tcp.bin` and the WebSocket capture to `mat
 
 ## Findings
 
+### Which ini## Findings
+
+From Zach's capture on 2026-11-02 (1v1 casual, raw TCP on 49123). `match-tcp.bin` is trimmed and anonymised from the 10.6 MB original: every non-UpdateState event except BallHit and ClockUpdatedSeconds, plus every 20th UpdateState; PrimaryId and Loadout removed; the opponent renamed "OppPlayer1". Roster player: "Fries" (team 1, Orange).
+
 ### Which ini was used
-(TAStatsAPI.ini or DefaultStatsAPI.ini, full path)
+The Stats API ini is read only when Rocket League launches: after editing it, fully restart RL (the port only opens after a restart). This was the cause of the earlier empty captures.
 
 ### Did 49123 answer as a WebSocket?
-(yes/no, what the raw TCP capture looked like)
+Not needed: 49123 is a raw TCP stream of concatenated JSON objects with no delimiter (`}{`).
 
 ### Did 49124 WebSocket connect?
-(yes/no)
+Not tested.
 
 ### Observed message envelope / field names
-(event name, data, match GUID, players, teams)
+`{"Event": "<Name>", "Data": "<JSON-encoded string>"}`. Data is a string holding JSON (double-encoded). Every Data has `MatchGuid`.
+
+- UpdateState: `{MatchGuid, Players:[{Name, PrimaryId, Shortcut, TeamNum, Score, Goals, Shots, Assists, Saves, Touches, CarTouches, Demos, Loadout, bOnGround, bHasCar, Speed}], Game:{Teams:[{Name, TeamNum, Score, ...}], PlaylistId, TimeSeconds, bOvertime, Ball, bReplay, bHasWinner, Winner, Arena, bHasTarget, Target}}`
+- MatchCreated, MatchInitialized, RoundStarted, CountdownBegin, MatchDestroyed: `{MatchGuid}` only.
+- PlayerJoined / PlayerLeft: `{MatchGuid, PlayerName, PrimaryId}` (the last PlayerLeft has an empty MatchGuid).
+- GoalScored: `{MatchGuid, GoalSpeed, GoalTime, ImpactLocation, Scorer:{Name, Shortcut, TeamNum}, BallLastTouch:{Player:{...}, Speed}}`. No assister.
+- StatfeedEvent: `{MatchGuid, EventName, Type, MainTarget:{Name, Shortcut, TeamNum}, SecondaryTarget?}`.
+- MatchEnded: `{MatchGuid, WinnerTeamNum}`. No scores.
 
 ### Event names
-- goal:
-- statfeed (Assist, Save, Demolish):
-- match created / initialized / started:
-- match ended / destroyed:
-- periodic update:
+- goal: GoalScored (StatfeedEvent "Goal" also fires; the parser ignores it to avoid double counting)
+- statfeed (Assist, Save, Demolish): StatfeedEvent with EventName "Assist", "Save"/"EpicSave", "Demolish" (MainTarget = attacker, SecondaryTarget = victim). Seen in this match: Shot, Goal, BicycleHit, EpicSave, LongGoal, Demolish, Win. Assist and Save were not seen.
+- match created / initialized / started: MatchCreated, MatchInitialized, CountdownBegin, RoundStarted
+- match ended / destroyed: MatchEnded, MatchDestroyed
+- periodic update: UpdateState (team scores, clock `Game.TimeSeconds`, `bOvertime`, `bReplay`)
 
 ### Counts of each event in the capture
-(event name: count)
+Full match: UpdateState 5377, ClockUpdatedSeconds 214, BallHit 166, StatfeedEvent 14, GoalScored 6, CountdownBegin 4, RoundStarted 4, GoalReplayStart 3, GoalReplayEnd 3, CrossbarHit 3, PlayerJoined 2, PlayerLeft 2, MatchCreated 1, MatchInitialized 1, GoalReplayWillEnd 1, MatchEnded 1, MatchDestroyed 1. The fixture keeps 268 UpdateState and drops BallHit and ClockUpdatedSeconds (314 messages).
+
+Timeline: goals at clock 288 (OppPlayer1), 242 (OppPlayer1), 156 (Fries); EpicSave by Fries at 190; Demolish Fries -> OppPlayer1 at 109; MatchEnded at clock 88 (opponent left), WinnerTeamNum 0; final score Blue 2, Orange 1. (In the trimmed fixture the nearest sampled clocks are 288, 243, 157, 191 and 110.)
+
+Expected parser output for the fixture: 1 match_start (Fries t1, OppPlayer1 t0), 3 goals, 1 save (Fries), 1 demo (Fries -> OppPlayer1), 0 assists, 1 match_end with score `{"0":2,"1":1}`.
 
 ### Contradictions with the spec
-(e.g. no team on goal events; note parser adjustments for Task 3)
+- No assister on GoalScored: goals are sent without one; assists come from StatfeedEvent "Assist".
+- GoalScored fires again during each goal replay with an empty scorer name and GoalTime 0 (UpdateState `bReplay` true). The parser ignores GoalScored with no scorer name or during a replay.
+- MatchEnded has no scores: match_end takes them from the latest UpdateState `Game.Teams[].Score`.
+- gameTime is the latest UpdateState `Game.TimeSeconds` (integer clock), plus 10000 in overtime, so every helper in the lobby computes the same value for dedupe.
+- The first UpdateState lists only the local player (the opponent loads later), so match_start waits until the match is live (MatchInitialized, CountdownBegin or RoundStarted, or the clock moving when joining mid-match) and is otherwise sent just before the first stat event.
 
 ### Spotify Jam guest check
 While a friend hosts a Jam, open the developer.spotify.com console "Get Currently Playing Track" as a guest.
-- `is_playing` populated:
-- `item` populated:
+- `is_playing` populated: (not checked yet)
+- `item` populated: (not checked yet)
