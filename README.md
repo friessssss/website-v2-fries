@@ -14,6 +14,7 @@ Personal site of Zach Robertson, built with Next.js 14 and TypeScript. It holds 
 | `RL_GROUP_PASSCODE` | Shared passcode that unlocks the tracker |
 | `RL_COOKIE_SECRET` | Secret used to sign the unlock cookie |
 | `RL_TOKEN_KEY` | 32-byte base64 key that encrypts stored Spotify tokens |
+| `GITHUB_TOKEN` | Optional. Authenticates helper release lookups to avoid GitHub's unauthenticated rate limit; a fine-grained token with public read access is enough |
 
 Generate secrets with `openssl rand -base64 32`.
 

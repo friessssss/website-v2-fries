@@ -69,3 +69,36 @@ describe('latestHelper caching', () => {
     expect(f).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('latestHelper GitHub headers', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function sentHeaders(f: ReturnType<typeof counting>): Record<string, string> {
+    const calls = f.mock.calls as unknown as Array<[string, { headers: Record<string, string> }]>;
+    return calls[0][1].headers;
+  }
+
+  it('sends auth and api version headers when GITHUB_TOKEN is set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'ghp_test');
+    const f = counting(200, []);
+    await expect(latestHelper(T0)).rejects.toMatchObject({ code: 'no_release' });
+    expect(sentHeaders(f)).toEqual({
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'zachrobertson.co-rl-tracker',
+      Authorization: 'Bearer ghp_test',
+      'X-GitHub-Api-Version': '2022-11-28',
+    });
+  });
+
+  it('omits auth headers when GITHUB_TOKEN is not set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '');
+    const f = counting(200, []);
+    await expect(latestHelper(T0)).rejects.toMatchObject({ code: 'no_release' });
+    expect(sentHeaders(f)).toEqual({
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'zachrobertson.co-rl-tracker',
+    });
+  });
+});
