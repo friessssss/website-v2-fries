@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actorLabel, formatClock, formatDay, formatProgress, isSentLate } from '../format';
+import { actorLabel, formatClock, formatDay, formatProgress, isSentLate, slugify } from '../format';
 
 const ROSTER = [
   { slug: 'ashton', displayName: 'Ashton' },
@@ -55,5 +55,14 @@ describe('formatDay', () => {
     // 04:41 UTC on Nov 2 is still Nov 1 in Denver
     expect(formatDay(new Date('2026-11-02T04:41:00Z'))).toBe('Nov 1');
     expect(formatDay(new Date('2026-10-15T20:00:00Z'))).toBe('Oct 15');
+  });
+});
+
+describe('slugify', () => {
+  it('lowercases, turns runs of non-alphanumerics into one dash and trims dashes', () => {
+    expect(slugify('Tubbs McGee')).toBe('tubbs-mcgee');
+    expect(slugify('  Ash!! R. ')).toBe('ash-r');
+    expect(slugify('Zoë 2')).toBe('zo-2');
+    expect(slugify('!!!')).toBe('');
   });
 });

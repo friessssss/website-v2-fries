@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Player } from '../apiTypes';
-import { BUTTON, INPUT, NOTE, Section, send } from './shared';
+import { slugify } from '../format';
+import { ACTION, BUTTON, INPUT, NOTE, Section, send } from './shared';
 
 export type UnknownName = { name: string; count: number };
 
@@ -93,6 +94,14 @@ export default function Roster({
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newAliases, setNewAliases] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const removeRefs = useRef(new Map<string, HTMLButtonElement>());
+  const returnTo = useRef<string | null>(null);
 
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
@@ -102,10 +111,48 @@ export default function Roster({
     if (players && !dirtyRef.current) setRows(toRows(players));
   }, [players]);
 
-  const edit = (i: number, field: 'displayName' | 'aliases', value: string) => {
-    setRows((r) => r && r.map((row, j) => (j === i ? { ...row, [field]: value } : row)));
+  useEffect(() => {
+    if (confirming) confirmRef.current?.focus();
+    else if (returnTo.current) {
+      (removeRefs.current.get(returnTo.current) ?? saveRef.current)?.focus();
+      returnTo.current = null;
+    }
+  }, [confirming]);
+
+  const touch = (r: Row[] | null) => {
+    setRows(r);
     setDirty(true);
+  };
+
+  const edit = (i: number, field: 'displayName' | 'aliases', value: string) => {
+    touch(rows && rows.map((row, j) => (j === i ? { ...row, [field]: value } : row)));
     setMessage(null);
+  };
+
+  const cancelRemove = () => {
+    returnTo.current = confirming;
+    setConfirming(null);
+  };
+
+  const remove = (row: Row) => {
+    touch(rows && rows.filter((r) => r.slug !== row.slug));
+    returnTo.current = 'save'; // the row's buttons are gone; land on Save roster
+    setConfirming(null);
+    setMessage(`${row.displayName || row.slug} will be removed when you save.`);
+  };
+
+  const add = () => {
+    const name = newName.trim();
+    const slug = slugify(name);
+    if (!name) return setAddError('Enter a display name.');
+    if (!slug) return setAddError('Use at least one letter or number in the name.');
+    if (slug.length > 40) return setAddError('That name is too long.');
+    if (rows?.some((r) => r.slug === slug)) return setAddError("There's already a player with that name. Pick another.");
+    touch([...(rows ?? []), { slug, displayName: name, aliases: newAliases }]);
+    setNewName('');
+    setNewAliases('');
+    setAddError(null);
+    setMessage(`${name} will be added when you save.`);
   };
 
   async function save(e: FormEvent) {
@@ -145,37 +192,119 @@ export default function Roster({
                 <th scope="col" className="w-2/5 py-2 pr-3 font-normal">
                   {'>'} display name
                 </th>
-                <th scope="col" className="py-2 font-normal">
+                <th scope="col" className="py-2 pr-3 font-normal">
                   {'>'} in-game names, comma-separated
+                </th>
+                <th scope="col" className="w-0 py-2 font-normal">
+                  <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.slug} className="border-b border-line-10">
-                  <td className="py-2 pr-3">
-                    <input
-                      aria-label={`Display name for ${r.slug}`}
-                      value={r.displayName}
-                      maxLength={60}
-                      onChange={(e) => edit(i, 'displayName', e.target.value)}
-                      className={`${INPUT} w-full text-sm`}
-                    />
-                  </td>
-                  <td className="py-2">
-                    <input
-                      aria-label={`In-game names for ${r.displayName || r.slug}`}
-                      value={r.aliases}
-                      onChange={(e) => edit(i, 'aliases', e.target.value)}
-                      className={`${INPUT} w-full text-sm`}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                const name = r.displayName || r.slug;
+                return (
+                  <tr key={r.slug} className="border-b border-line-10">
+                    {confirming === r.slug ? (
+                      <td colSpan={3} className="py-3">
+                        <span className="flex flex-wrap items-center gap-3 font-mono text-xs text-ink-70">
+                          Remove {name}? Their past goals stay.
+                          <button ref={confirmRef} type="button" onClick={() => remove(r)} className={`${ACTION} text-ink-90`}>
+                            Remove
+                          </button>
+                          <button type="button" onClick={cancelRemove} className={ACTION}>
+                            Cancel
+                          </button>
+                        </span>
+                      </td>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-3">
+                          <input
+                            aria-label={`Display name for ${r.slug}`}
+                            value={r.displayName}
+                            maxLength={60}
+                            onChange={(e) => edit(i, 'displayName', e.target.value)}
+                            className={`${INPUT} w-full text-sm`}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            aria-label={`In-game names for ${name}`}
+                            value={r.aliases}
+                            onChange={(e) => edit(i, 'aliases', e.target.value)}
+                            className={`${INPUT} w-full text-sm`}
+                          />
+                        </td>
+                        <td className="py-2">
+                          <button
+                            ref={(el) => {
+                              if (el) removeRefs.current.set(r.slug, el);
+                              else removeRefs.current.delete(r.slug);
+                            }}
+                            type="button"
+                            onClick={() => setConfirming(r.slug)}
+                            aria-label={`Remove ${name}`}
+                            className={ACTION}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              <tr>
+                <td className="py-2 pr-3">
+                  <input
+                    aria-label="New player display name"
+                    placeholder="new player"
+                    value={newName}
+                    maxLength={60}
+                    onChange={(e) => {
+                      setNewName(e.target.value);
+                      setAddError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        add();
+                      }
+                    }}
+                    className={`${INPUT} w-full text-sm`}
+                  />
+                </td>
+                <td className="py-2 pr-3">
+                  <input
+                    aria-label="New player in-game names"
+                    placeholder="in-game names"
+                    value={newAliases}
+                    onChange={(e) => setNewAliases(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        add();
+                      }
+                    }}
+                    className={`${INPUT} w-full text-sm`}
+                  />
+                </td>
+                <td className="py-2">
+                  <button type="button" onClick={add} className={`${ACTION} whitespace-nowrap`}>
+                    Add player
+                  </button>
+                </td>
+              </tr>
             </tbody>
           </table>
+          {addError && (
+            <p role="alert" className={NOTE}>
+              {addError}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-4">
-            <button type="submit" disabled={busy || !dirty} className={BUTTON}>
+            <button ref={saveRef} type="submit" disabled={busy || !dirty} className={BUTTON}>
               {busy ? 'Saving' : 'Save roster'}
             </button>
             {message && (

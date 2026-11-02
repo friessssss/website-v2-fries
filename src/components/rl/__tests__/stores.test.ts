@@ -30,11 +30,12 @@ describe('unlock store', () => {
     expect(store.get()).toBe(false);
     expect(await store.unlock('right')).toBe(true);
     expect(store.get()).toBe(true);
-    expect(a).toHaveBeenCalledTimes(1);
-    expect(b).toHaveBeenCalledTimes(1);
+    // one for the first check (after the wrong passcode), one for unlocking
+    expect(a).toHaveBeenCalledTimes(2);
+    expect(b).toHaveBeenCalledTimes(2);
     await store.lock();
     expect(store.get()).toBe(false);
-    expect(a).toHaveBeenCalledTimes(2);
+    expect(a).toHaveBeenCalledTimes(3);
   });
 
   it('swallows network errors in unlock and lock and fails closed', async () => {
@@ -43,6 +44,28 @@ describe('unlock store', () => {
     }) as unknown as typeof fetch);
     expect(await store.unlock('x')).toBe(false);
     await expect(store.lock()).resolves.toBeUndefined();
+    expect(store.get()).toBe(false);
+  });
+
+  it('is unchecked until the first read resolves, then notifies once checked', async () => {
+    const store = createUnlockStore(fakeFetch());
+    const a = vi.fn();
+    store.subscribe(a);
+    expect(store.isChecked()).toBe(false);
+    const pending = store.read();
+    expect(store.isChecked()).toBe(false);
+    await pending;
+    expect(store.isChecked()).toBe(true);
+    expect(store.get()).toBe(false);
+    expect(a).toHaveBeenCalledTimes(1); // checked flipped even though unlocked stayed false
+  });
+
+  it('counts a failed read as checked (locked)', async () => {
+    const store = createUnlockStore((async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch);
+    await store.read();
+    expect(store.isChecked()).toBe(true);
     expect(store.get()).toBe(false);
   });
 

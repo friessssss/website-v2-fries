@@ -42,3 +42,11 @@ export function isSentLate(e: {
   if (e.songResolved || e.source !== 'helper') return false;
   return new Date(e.createdAt).getTime() - new Date(e.occurredAt).getTime() > LATE_MS;
 }
+
+/** "Tubbs McGee" → "tubbs-mcgee". Empty when the name has no ASCII letters or digits. */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}

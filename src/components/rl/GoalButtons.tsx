@@ -17,10 +17,11 @@ export default function GoalButtons({
   rosterError: boolean;
   onLogged: () => void;
 }) {
-  const { unlocked, recheck } = useUnlocked();
+  const { unlocked, checked, recheck } = useUnlocked();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
+  if (!checked) return <p className="font-mono text-xs text-ink-50">Checking…</p>;
   if (!unlocked) return <UnlockPrompt />;
 
   async function send(url: string, init: RequestInit, failure: string, after?: (res: Response) => Promise<void>) {

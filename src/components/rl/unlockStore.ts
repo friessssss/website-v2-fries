@@ -2,10 +2,13 @@ export type UnlockFetch = typeof fetch;
 
 export function createUnlockStore(fetchFn: UnlockFetch) {
   let unlocked = false;
+  // false until the first read answers (or fails), so callers can avoid flashing the locked UI
+  let checked = false;
   const listeners = new Set<() => void>();
   const set = (v: boolean) => {
-    if (v === unlocked) return;
+    if (v === unlocked && checked) return;
     unlocked = v;
+    checked = true;
     listeners.forEach((l) => l());
   };
 
@@ -21,6 +24,7 @@ export function createUnlockStore(fetchFn: UnlockFetch) {
 
   return {
     get: () => unlocked,
+    isChecked: () => checked,
     subscribe(l: () => void) {
       listeners.add(l);
       return () => {

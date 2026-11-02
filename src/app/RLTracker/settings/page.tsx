@@ -19,7 +19,7 @@ import { useUnlocked } from '@/components/rl/useUnlocked';
 const UNAUTHORIZED = 'HTTP 401';
 
 export default function RLSettingsPage() {
-  const { unlocked, recheck } = useUnlocked();
+  const { unlocked, checked, recheck } = useUnlocked();
   const on = (url: string) => (unlocked ? url : null);
   const players = usePoll<{ players: Player[] }>(on('/api/rl/v1/players'), 60000);
   const names = usePoll<{ names: UnknownName[] }>(on('/api/rl/v1/unknown-names'), 60000);
@@ -55,7 +55,9 @@ export default function RLSettingsPage() {
           <h1 className="text-5xl tracking-tight text-ink md:text-7xl">Settings</h1>
         </header>
 
-        {!unlocked ? (
+        {!checked ? (
+          <p className="border-t border-line-20 pt-6 font-mono text-xs text-ink-50">Checking…</p>
+        ) : !unlocked ? (
           <section aria-label="Unlock settings" className="flex flex-col gap-4 border-t border-line-20 pt-6">
             <p className="text-ink-70">Settings are for the group. Enter the passcode to continue.</p>
             <UnlockPrompt />

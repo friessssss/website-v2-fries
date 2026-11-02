@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Player } from '../apiTypes';
-import { BUTTON, CopyField, INPUT, KeyList, NOTE, Section, send } from './shared';
+import { ACTION, BUTTON, CopyField, INPUT, KeyList, NOTE, Section, send } from './shared';
 import type { ApiKey } from './shared';
 
 type Created = { id: string; apiKey: string; label: string };
@@ -28,22 +28,11 @@ export default function Shortcuts({
   const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  // Shown once: never persisted, dropped when the section scrolls away or another key is made.
+  // Shown once: never persisted. Dropped on Done, on the next create, when revoked, or when the page unmounts.
   const [created, setCreated] = useState<Created | null>(null);
   const [origin, setOrigin] = useState('');
-  const area = useRef<HTMLDivElement>(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
-
-  useEffect(() => {
-    const el = area.current;
-    if (!created || !el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) setCreated(null);
-    });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [created]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -72,7 +61,7 @@ export default function Shortcuts({
 
   return (
     <Section id="rl-shortcuts" step="05" title="Shortcuts">
-      <div ref={area} className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <p className="max-w-2xl text-ink-70">
           Log goals from a Stream Deck or an iPhone Shortcut. Make one key per device, then point it at the trigger URL.
         </p>
@@ -105,8 +94,11 @@ export default function Shortcuts({
               {'>'} key for {created.label}
             </span>
             <CopyField value={created.apiKey} label={`shortcut key for ${created.label}`} />
-            <p role="status" className={NOTE}>
+            <p role="status" className="flex flex-wrap items-center gap-4 font-mono text-xs text-ink-70">
               Copy it now. It won&apos;t be shown again.
+              <button type="button" onClick={() => setCreated(null)} className={ACTION}>
+                Done
+              </button>
             </p>
           </div>
         )}
