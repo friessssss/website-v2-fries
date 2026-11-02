@@ -79,6 +79,13 @@ export interface SpotifyAccountDoc {
   accessTokenExpiresAt?: Date;
   status: 'ok' | 'needs_relink';
   lastSeenPlayingAt?: Date;
+  /** Single-flight refresh lease across instances: held while one request refreshes the token. */
+  refreshLockUntil?: Date;
+  /** Consecutive refresh rejections (invalid_grant) since the last success, and when the run began. */
+  authFailures?: number;
+  firstAuthFailureAt?: Date;
+  /** Last refresh attempt on a needs_relink account (probed at most every 10 minutes). */
+  lastRelinkProbeAt?: Date;
   createdAt: Date;
 }
 

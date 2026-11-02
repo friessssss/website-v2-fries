@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import type { Db } from 'mongodb';
+import type { Db, Filter } from 'mongodb';
 import { collections } from './db';
 import { decryptSecret, encryptSecret } from './crypto';
 import type { SpotifyAccountDoc, Track } from './types';
@@ -8,6 +8,16 @@ const TIMEOUT_MS = 2500;
 const REFRESH_SKEW_MS = 30_000;
 const NOW_PLAYING_TTL_MS = 3000;
 const PLAYLIST_TTL_MS = 60 * 60 * 1000;
+/** How long one request may hold the refresh lease before another may take it over. */
+const REFRESH_LEASE_MS = 10_000;
+/** How long a request that lost the lease waits for the winner's fresh access token. */
+const LEASE_WAIT_MS = 3000;
+const LEASE_POLL_MS = 50;
+/** needs_relink only after this many consecutive refresh rejections spanning at least FLAG_SPAN_MS. */
+const FLAG_AFTER_FAILURES = 3;
+const FLAG_SPAN_MS = 10 * 60 * 1000;
+/** A needs_relink account is probed with a refresh at most this often. */
+const RELINK_PROBE_MS = 10 * 60 * 1000;
 
 export type RawPlaying = {
   isPlaying: boolean;
@@ -31,9 +41,17 @@ export interface SpotifyClient {
   me(accessToken: string): Promise<{ id: string; displayName: string }>;
 }
 
-/** The refresh token or access token was rejected; the account must be relinked. */
+/**
+ * Spotify rejected a token: a refresh token (token endpoint, 400 invalid_grant or 401) or an access
+ * token (API 401). One rejection is not proof the link is dead; see `askAccount`.
+ */
 export class SpotifyAuthError extends Error {
-  constructor(message = 'Spotify rejected the credentials') {
+  constructor(
+    message = 'Spotify rejected the credentials',
+    readonly httpStatus?: number,
+    /** The `error` field of Spotify's JSON body, e.g. 'invalid_grant'. */
+    readonly spotifyErrorCode?: string,
+  ) {
     super(message);
     this.name = 'SpotifyAuthError';
   }
@@ -64,7 +82,7 @@ export function httpSpotifyClient(
         // body was not JSON
       }
       if (res.status === 401 || (res.status === 400 && code === 'invalid_grant')) {
-        throw new SpotifyAuthError(`Spotify token request rejected (${res.status})`);
+        throw new SpotifyAuthError(`Spotify token request rejected (${res.status})`, res.status, code || undefined);
       }
       throw new Error(`Spotify token request failed (${res.status})`);
     }
@@ -94,7 +112,7 @@ export function httpSpotifyClient(
         accessToken,
       );
       if (res.status === 204) return null;
-      if (res.status === 401) throw new SpotifyAuthError('Spotify access token rejected');
+      if (res.status === 401) throw new SpotifyAuthError('Spotify access token rejected', 401);
       if (!res.ok) throw new Error(`Spotify currently-playing failed (${res.status})`);
       const text = await res.text();
       if (!text.trim()) return null;
@@ -171,6 +189,7 @@ export async function linkAccount(
         accessTokenExpiresAt: new Date(now.getTime() + tokens.expiresIn * 1000),
         status: 'ok',
       },
+      $unset: { authFailures: '', firstAuthFailureAt: '', lastRelinkProbeAt: '', refreshLockUntil: '' },
       $setOnInsert: { spotifyUserId: profile.id, createdAt: now },
     },
     { upsert: true, returnDocument: 'after' },
@@ -217,20 +236,97 @@ async function memoPlaylistName(
 
 type Answer = { account: SpotifyAccountDoc; accessToken: string; playing: RawPlaying };
 
-async function refreshAccount(
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A stored access token usable at `now` (and not the one Spotify just rejected). */
+function usableToken(doc: SpotifyAccountDoc | null, now: Date, rejected?: string): string | null {
+  if (!doc?.accessToken || doc.accessToken === rejected || !doc.accessTokenExpiresAt) return null;
+  return doc.accessTokenExpiresAt.getTime() > now.getTime() + REFRESH_SKEW_MS ? doc.accessToken : null;
+}
+
+/**
+ * A refreshed access token, single-flight across requests and instances. The request that takes the
+ * lease (refreshLockUntil) refreshes with the refresh token read from the database as it takes the
+ * lease (never a stale in-memory copy) and stores the new tokens; the others wait for that access
+ * token. Returns null to skip the account this round: another request is still refreshing, its
+ * refresh failed, or Spotify rejected the refresh token (recorded, flagged only when it persists).
+ * `rejected` is an access token Spotify just refused, so it never counts as fresh.
+ */
+async function refreshedToken(
   db: Db,
   client: SpotifyClient,
   account: SpotifyAccountDoc,
   tokenKey: string,
   now: Date,
-): Promise<string> {
-  const refreshed = await client.refresh(decryptSecret(account.refreshTokenEnc, tokenKey));
+  { rejected, force = false }: { rejected?: string; force?: boolean } = {},
+): Promise<string | null> {
+  const accounts = collections(db).spotifyAccounts;
+  const lease = await accounts.findOneAndUpdate(
+    // Free when absent, null or expired.
+    { _id: account._id, refreshLockUntil: { $not: { $gt: now } } },
+    { $set: { refreshLockUntil: new Date(now.getTime() + REFRESH_LEASE_MS) } },
+    { returnDocument: 'after' },
+  );
+
+  if (!lease) {
+    // Another request holds the lease: use the token it stores, or skip this round.
+    const until = Date.now() + LEASE_WAIT_MS;
+    while (Date.now() < until) {
+      await sleep(LEASE_POLL_MS);
+      const doc = await accounts.findOne({ _id: account._id });
+      const token = usableToken(doc, now, rejected);
+      if (token) return token;
+      // Released without a usable token (the winner failed), or the account is gone.
+      if (!doc || !doc.refreshLockUntil || doc.refreshLockUntil.getTime() <= now.getTime()) return null;
+    }
+    return null;
+  }
+
+  const release = { $unset: { refreshLockUntil: '' as const } };
+  // Someone refreshed between our read and our lease.
+  const already = force ? null : usableToken(lease, now, rejected);
+  if (already) {
+    await accounts.updateOne({ _id: account._id }, release);
+    return already;
+  }
+
+  let refreshed: Awaited<ReturnType<SpotifyClient['refresh']>>;
+  try {
+    refreshed = await client.refresh(decryptSecret(lease.refreshTokenEnc, tokenKey));
+  } catch (e) {
+    if (!(e instanceof SpotifyAuthError)) {
+      await accounts.updateOne({ _id: account._id }, release).catch(() => undefined);
+      throw e;
+    }
+    console.error('[rl] spotify refresh rejected', String(account._id), e.httpStatus, e.spotifyErrorCode);
+    if (e.spotifyErrorCode !== 'invalid_grant') {
+      // Not a dead refresh token (e.g. bad client credentials): relinking would not help.
+      await accounts.updateOne({ _id: account._id }, release).catch(() => undefined);
+      return null;
+    }
+    const failures = (lease.authFailures ?? 0) + 1;
+    const first = lease.firstAuthFailureAt ?? now;
+    const flag = failures >= FLAG_AFTER_FAILURES && now.getTime() - first.getTime() >= FLAG_SPAN_MS;
+    const set: Partial<SpotifyAccountDoc> = { authFailures: failures, firstAuthFailureAt: first };
+    if (flag) Object.assign(set, { status: 'needs_relink', lastRelinkProbeAt: now });
+    try {
+      await accounts.updateOne({ _id: account._id }, { $set: set, ...release });
+    } catch {
+      // Could not persist the failure; skip this account rather than fail the pick (the lease expires).
+    }
+    return null;
+  }
+
   const set: Partial<SpotifyAccountDoc> = {
     accessToken: refreshed.accessToken,
     accessTokenExpiresAt: new Date(now.getTime() + refreshed.expiresIn * 1000),
+    status: 'ok',
   };
   if (refreshed.refreshToken) set.refreshTokenEnc = encryptSecret(refreshed.refreshToken, tokenKey);
-  await collections(db).spotifyAccounts.updateOne({ _id: account._id }, { $set: set });
+  await accounts.updateOne(
+    { _id: account._id },
+    { $set: set, $unset: { refreshLockUntil: '', authFailures: '', firstAuthFailureAt: '', lastRelinkProbeAt: '' } },
+  );
   return refreshed.accessToken;
 }
 
@@ -242,38 +338,27 @@ async function askAccount(
   now: Date,
 ): Promise<Answer | null> {
   try {
-    const fresh =
-      account.accessToken &&
-      account.accessTokenExpiresAt &&
-      account.accessTokenExpiresAt.getTime() > now.getTime() + REFRESH_SKEW_MS;
-    let accessToken = fresh
-      ? account.accessToken!
-      : await refreshAccount(db, client, account, tokenKey, now);
+    // A needs_relink account is only asked as a probe (see pickNowPlaying): always refresh it.
+    const probe = account.status === 'needs_relink';
+    let accessToken = probe ? null : usableToken(account, now);
+    accessToken ??= await refreshedToken(db, client, account, tokenKey, now, { force: probe });
+    if (!accessToken) return null;
     let playing: RawPlaying | null;
     try {
       playing = await client.currentlyPlaying(accessToken);
     } catch (e) {
-      // A cached token can be revoked early: refresh once and retry.
-      if (!(e instanceof SpotifyAuthError) || !fresh) throw e;
-      accessToken = await refreshAccount(db, client, account, tokenKey, now);
+      // An access token can be revoked early: refresh once (single-flight) and retry. Never flags.
+      if (!(e instanceof SpotifyAuthError)) throw e;
+      const retry = await refreshedToken(db, client, account, tokenKey, now, { rejected: accessToken });
+      if (!retry) return null;
+      accessToken = retry;
       playing = await client.currentlyPlaying(accessToken);
     }
     if (!playing || !playing.isPlaying) return null;
     return { account, accessToken, playing };
   } catch (e) {
-    if (e instanceof SpotifyAuthError) {
-      try {
-        await collections(db).spotifyAccounts.updateOne(
-          { _id: account._id },
-          { $set: { status: 'needs_relink' } },
-        );
-      } catch {
-        // Could not persist the status; skip this account rather than fail the pick.
-      }
-    } else {
-      // Name only: messages can carry response bodies.
-      console.error('[rl] spotify lookup failed', String(account._id), e instanceof Error ? e.name : 'non-error');
-    }
+    // Name only: messages can carry response bodies.
+    console.error('[rl] spotify lookup failed', String(account._id), e instanceof Error ? e.name : 'non-error');
     return null;
   }
 }
@@ -301,7 +386,20 @@ export async function pickNowPlaying(
   now: Date,
   deadlineMs = TIMEOUT_MS,
 ): Promise<{ track: Track; hostSlug: string } | null> {
-  const accounts = await collections(db).spotifyAccounts.find({ status: 'ok' }).toArray();
+  const c = collections(db).spotifyAccounts;
+  const ok = await c.find({ status: 'ok' }).toArray();
+  // needs_relink accounts get one probe per RELINK_PROBE_MS, claimed atomically across instances.
+  // $not $gt also matches a missing or null lastRelinkProbeAt (never probed).
+  const probeFilter: Filter<SpotifyAccountDoc> = {
+    status: 'needs_relink',
+    lastRelinkProbeAt: { $not: { $gt: new Date(now.getTime() - RELINK_PROBE_MS) } },
+  };
+  const probes: SpotifyAccountDoc[] = [];
+  for (const { _id } of await c.find(probeFilter, { projection: { _id: 1 } }).toArray()) {
+    const claimed = await c.findOneAndUpdate({ _id, ...probeFilter }, { $set: { lastRelinkProbeAt: now } }, { returnDocument: 'after' });
+    if (claimed) probes.push(claimed);
+  }
+  const accounts = [...ok, ...probes];
   const answers = (await Promise.all(accounts.map((a) => askWithDeadline(deadlineMs, () => askAccount(db, client, a, tokenKey, now))))).filter(
     (a): a is Answer => a !== null,
   );
