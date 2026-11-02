@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { collections } from '../db';
 import { funStats } from '../funstats';
+import { sessionStats } from '../stats';
 import { NIGHT, EXTRA_SESSION_ID, seedMatches, seedNight } from './fixtures';
 import { useTestDb } from './testdb';
 
@@ -83,6 +84,31 @@ describe('funStats', () => {
     // sam: night = 1 goal + 1 save = 2; older session = 2 saves -> tie, most recent wins
     expect(row('sam')).toMatchObject({ sessionId: NIGHT.sessionId, total: 2 });
     expect(f.nightOfTheNight.find((r) => r.actor === 'jake')).toBeUndefined();
+  });
+
+  it('nightOfTheNight ignores imported seasons; imported goals still count all-time', async () => {
+    const db = getDb();
+    await seedNight(db);
+    await seedMatches(db);
+    const at = new Date('2021-12-20T02:00:00Z');
+    const imported = (actor: string, k: number) => ({
+      type: 'goal' as const, actor, song: 'Song A', artist: 'Artist A', songKey: 'song a|artist a', songResolved: true,
+      occurredAt: new Date(at.getTime() + k), sessionId: 'christmas-league-2021', source: 'import' as const,
+      dedupeKey: `import:2021:song a:artist a:${actor}:${k}`, createdAt: new Date(),
+    });
+    await collections(db).events.insertMany([
+      ...Array.from({ length: 20 }, (_, k) => imported('zach', k)),
+      ...Array.from({ length: 9 }, (_, k) => imported('mason', k)),
+    ]);
+    const f = await funStats(db, all, NIGHT.now);
+    const row = (a: string) => f.nightOfTheNight.find((r) => r.actor === a);
+    expect(row('zach')).toMatchObject({ sessionId: NIGHT.sessionId, total: 7 });
+    expect(row('mason')).toBeUndefined();
+    expect(f.nightOfTheNight.map((r) => r.sessionId)).not.toContain('christmas-league-2021');
+    const s = await sessionStats(db, all, NIGHT.now);
+    expect(s.leaderboard.find((r) => r.actor === 'zach')!.goals).toBe(NIGHT.goals.zach + 20);
+    expect(s.leaderboard.find((r) => r.actor === 'mason')!.goals).toBe(9);
+    expect(s.songs.find((x) => x.song === 'Song A')!.byActor.zach).toBe(2 + 20);
   });
 
   it('respects session scope and handles empty data', async () => {

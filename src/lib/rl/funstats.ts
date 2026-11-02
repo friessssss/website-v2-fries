@@ -153,9 +153,10 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
     .sort((a, b) => b.rate - a.rate || b.matches - a.matches || a.song.localeCompare(b.song));
 
   // Night of the night: each roster player's best session by goals + assists + saves.
+  // Imported seasons (christmas-league-YYYY) are a whole season in one "session", not a night.
   const perSession = new Map<string, { total: number; last: number }>();
   for (const e of events) {
-    if (e.type === 'demo' || !rosterSlugs.has(e.actor)) continue;
+    if (e.type === 'demo' || e.source === 'import' || !rosterSlugs.has(e.actor)) continue;
     const k = `${e.actor}\u0000${e.sessionId}`;
     const row = perSession.get(k) ?? { total: 0, last: 0 };
     row.total++;
