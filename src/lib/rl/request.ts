@@ -175,6 +175,8 @@ export function toErrorResponse(err: unknown): NextResponse {
   if (err instanceof IngestError) return json(err.code === 'not_found' ? 404 : 400, err.code);
   if (err instanceof NotFound) return json(404, 'not_found');
   if (err instanceof RosterError) return json(err.code === 'duplicate_alias' ? 409 : 400, err.code);
+  const detail = err instanceof Error ? [err.name, err.message, err.stack] : ['non-error', String(err)];
+  console.error('[rl] unhandled', ...detail);
   if (isMongoUnavailable(err)) return json(503, 'unavailable');
   return json(500, 'server_error');
 }

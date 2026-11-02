@@ -269,6 +269,18 @@ describe('events', () => {
     expect(await collections(db()).events.countDocuments()).toBe(0);
   });
 
+  it('patchEvent rejects unknown actor, target and assister', async () => {
+    await seedPlayers(db());
+    const { deps } = setup(db, null);
+    const ev = await recordManualGoal(db(), deps, 'sam');
+    const id = ev._id!.toString();
+    for (const patch of [{ actor: 'nobody' }, { target: 'nobody' }, { assister: 'nobody' }]) {
+      await expect(patchEvent(db(), id, patch)).rejects.toMatchObject({ code: 'unknown_player' });
+    }
+    expect((await patchEvent(db(), id, { actor: 'opponent', assister: 'teammate' })).actor).toBe('opponent');
+    expect((await collections(db()).events.findOne({ _id: ev._id }))!.actor).toBe('opponent');
+  });
+
   it('reassign repoints events and adds the alias', async () => {
     await withMatch();
     const { deps, key } = setup(db);

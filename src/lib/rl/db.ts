@@ -21,11 +21,22 @@ export interface LegacyGoalDoc {
   playlistId?: string;
 }
 
+let indexesReady: Promise<void> | null = null;
+
 export async function getDb(): Promise<Db> {
   // Imported lazily: '@/lib/mongodb' throws at import time when MONGODB_URI is unset.
   const { default: clientPromise } = await import('@/lib/mongodb');
   const client = await clientPromise;
-  return client.db(RL_DB_NAME);
+  const db = client.db(RL_DB_NAME);
+  // Once per process, so the unique dedupe index exists even if the migration never ran.
+  indexesReady ??= ensureIndexes(db);
+  try {
+    await indexesReady;
+  } catch (err) {
+    indexesReady = null; // retry on the next call
+    throw err;
+  }
+  return db;
 }
 
 export function collections(db: Db) {

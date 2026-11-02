@@ -292,6 +292,12 @@ export async function patchEvent(
     song?: { trackId?: string; song: string; artist: string };
   },
 ): Promise<EventDoc> {
+  const roster = await listPlayers(db);
+  for (const who of [patch.actor, patch.target, patch.assister]) {
+    if (who !== undefined && who !== 'opponent' && who !== 'teammate' && !roster.some((p) => p.slug === who)) {
+      throw new IngestError('unknown_player');
+    }
+  }
   const $set: Partial<EventDoc> = {};
   if (patch.actor !== undefined) $set.actor = patch.actor;
   if (patch.target !== undefined) $set.target = patch.target;

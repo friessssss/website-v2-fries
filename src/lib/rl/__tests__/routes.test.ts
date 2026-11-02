@@ -284,6 +284,18 @@ describe('rl v1 routes', () => {
       const patched = await idPATCH(req('PATCH', `/events/${id}`, { cookie: COOKIE, body: { actor: 'opponent' } }), { params: { id } });
       expect(patched.status).toBe(200);
       expect((await body(patched)).event.actor).toBe('opponent');
+      const ghost = await idPATCH(req('PATCH', `/events/${id}`, { cookie: COOKIE, body: { actor: 'nobody' } }), { params: { id } });
+      expect(ghost.status).toBe(400);
+      expect((await body(ghost)).error).toBe('unknown_player');
+      const badAssister = await idPATCH(req('PATCH', `/events/${id}`, { cookie: COOKIE, body: { assister: 'nobody' } }), { params: { id } });
+      expect(badAssister.status).toBe(400);
+      const songPatch = await idPATCH(
+      req('PATCH', `/events/${id}`, { cookie: COOKIE, body: { song: { trackId: 't9', song: 'New Song', artist: 'Band' } } }),
+      { params: { id } },
+      );
+      expect(songPatch.status).toBe(200);
+      expect((await body(songPatch)).event).toMatchObject({ song: 'New Song', artist: 'Band', trackId: 't9', songResolved: true });
+      expect((await idPATCH(req('PATCH', `/events/${id}`, { cookie: COOKIE, body: { song: 'str' } }), { params: { id } })).status).toBe(400);
       const del = await idDELETE(req('DELETE', `/events/${id}`, { cookie: COOKIE }), { params: { id } });
       expect(del.status).toBe(200);
       expect(await collections(db()).events.countDocuments({ _id: ev._id })).toBe(0);
@@ -352,20 +364,26 @@ describe('rl v1 routes', () => {
   });
 
   describe('error mapping', () => {
-    it('maps unexpected errors to 500 without leaking the message', async () => {
+    it('maps unexpected errors to 500 without leaking the message, and logs server-side', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(request.getCtx).mockRejectedValueOnce(new Error('secret detail'));
       const res = await sessionsGET(req('GET', '/sessions'));
       expect(res.status).toBe(500);
       expect(await body(res)).toEqual({ error: 'server_error' });
+      expect(spy).toHaveBeenCalledWith('[rl] unhandled', 'Error', 'secret detail', expect.any(String));
+      spy.mockRestore();
     });
 
     it('maps Mongo connection failures to 503', async () => {
       const err = new Error('boom');
       err.name = 'MongoServerSelectionError';
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(request.getCtx).mockRejectedValueOnce(err);
       const res = await sessionsGET(req('GET', '/sessions'));
       expect(res.status).toBe(503);
       expect(await body(res)).toEqual({ error: 'unavailable' });
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 

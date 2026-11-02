@@ -2,6 +2,7 @@ import { HttpError } from './request';
 
 const RELEASES_URL = 'https://api.github.com/repos/friessssss/website-v2-fries/releases';
 const TTL_MS = 10 * 60 * 1000;
+const FAIL_TTL_MS = 60 * 1000;
 
 type Latest = { version: string; downloadUrl: string };
 type Release = {
@@ -13,7 +14,8 @@ type Release = {
 
 const realFetch: typeof fetch = (...a) => fetch(...a);
 let fetchImpl: typeof fetch = realFetch;
-let cache: { at: number; value: Latest } | null = null;
+type Cached = { at: number; ttl: number; value?: Latest; error?: HttpError };
+let cache: Cached | null = null;
 
 export function setFetchForTests(f: typeof fetch | null): void {
   fetchImpl = f ?? realFetch;
@@ -21,7 +23,23 @@ export function setFetchForTests(f: typeof fetch | null): void {
 }
 
 export async function latestHelper(nowMs: number): Promise<Latest> {
-  if (cache && nowMs >= cache.at && nowMs - cache.at < TTL_MS) return cache.value;
+  if (cache && nowMs >= cache.at && nowMs - cache.at < cache.ttl) {
+    if (cache.value) return cache.value;
+    throw cache.error!;
+  }
+  try {
+    const value = await fetchLatest();
+    cache = { at: nowMs, ttl: TTL_MS, value };
+    return value;
+  } catch (err) {
+    if (err instanceof HttpError) {
+      cache = { at: nowMs, ttl: err.status === 404 ? TTL_MS : FAIL_TTL_MS, error: err };
+    }
+    throw err;
+  }
+}
+
+async function fetchLatest(): Promise<Latest> {
   let releases: Release[];
   try {
     const res = await fetchImpl(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json' } });
@@ -41,10 +59,8 @@ export async function latestHelper(nowMs: number): Promise<Latest> {
     .sort((a, b) => (Date.parse(b.r.published_at ?? '') || 0) - (Date.parse(a.r.published_at ?? '') || 0));
   const best = candidates[0];
   if (!best) throw new HttpError(404, 'no_release');
-  const value = {
+  return {
     version: best.r.tag_name!.slice('helper-v'.length),
     downloadUrl: best.exe!.browser_download_url!,
   };
-  cache = { at: nowMs, value };
-  return value;
 }
