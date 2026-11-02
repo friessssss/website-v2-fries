@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   });
   console.log(`Inserted: ${result.inserted}`);
   console.log(`Skipped (already imported): ${result.skipped}`);
-  console.log(`Songs linked to tracker songs: ${result.matched}`);
+  console.log(`Events linked to tracker songs or playlist: ${result.linked}`);
   console.log(
     result.playlist.id
       ? `Playlist: ${result.playlist.name ?? '(no name)'} (${result.playlist.id})`

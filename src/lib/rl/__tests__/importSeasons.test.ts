@@ -142,7 +142,7 @@ describe('importSeasonArchive', () => {
         { song: 'Obscure Carol', artist: 'Nobody', goalsFor: 0, goalsAgainst: 1, byPlayer: {} },
       ]),
     );
-    expect(res.matched).toBe(1);
+    expect(res.linked).toBe(1);
     expect(res.unmatched).toEqual([
       { year: 2023, song: 'Last Christmas', artist: 'Ariana Grande' },
       { year: 2023, song: 'Obscure Carol', artist: 'Nobody' },
@@ -151,6 +151,26 @@ describe('importSeasonArchive', () => {
     expect(linked).toMatchObject({ song: 'Last Christmas - Remastered', artist: 'Wham!', album: 'Make It Big', albumArt: 'http://art/1' });
     const other = await collections(db).events.findOne({ source: 'import', song: 'Obscure Carol' });
     expect(other).toMatchObject({ artist: 'Nobody', trackId: null, album: null });
+  });
+
+  it('backfills links on a re-run after tracker songs and a playlist appear', async () => {
+    const db = await prepared();
+    const data = season([{ song: 'Last Christmas', artist: 'Wham!', goalsFor: 1, goalsAgainst: 1, byPlayer: { Zach: 1 } }]);
+    expect(await importSeasonArchive(db, data)).toMatchObject({ inserted: 2, linked: 0 });
+    const tracker = {
+      type: 'goal' as const, actor: 'zach', song: 'Last Christmas - Remastered', artist: 'Wham!', album: 'Make It Big',
+      albumArt: 'http://art/1', trackId: 'tr1', songResolved: true, occurredAt: new Date(), sessionId: 's',
+      source: 'helper' as const, createdAt: new Date(), playlist: 'Christmas Hits', playlistId: 'plX',
+    };
+    const { insertedId } = await collections(db).events.insertOne({ ...tracker });
+    const res = await importSeasonArchive(db, data);
+    expect(res).toMatchObject({ inserted: 0, skipped: 2, linked: 2, playlist: { id: 'plX', name: 'Christmas Hits' } });
+    const imported = await collections(db).events.find({ source: 'import' }).toArray();
+    expect(imported).toHaveLength(2);
+    expect(imported.every((e) => e.trackId === 'tr1' && e.song === 'Last Christmas - Remastered' && e.playlistId === 'plX')).toBe(true);
+    const original = await collections(db).events.findOne({ _id: insertedId });
+    expect(original).toMatchObject({ song: 'Last Christmas - Remastered', playlist: 'Christmas Hits', source: 'helper' });
+    expect((await importSeasonArchive(db, data)).linked).toBe(0);
   });
 
   it('imports the real archive so session stats show the history', async () => {

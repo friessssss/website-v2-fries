@@ -26,7 +26,8 @@ export interface ArchiveData {
 export interface ImportResult {
   inserted: number;
   skipped: number;
-  matched: number;
+  /** Imported events carrying a tracker-song and/or playlist link that were inserted or backfilled this run. */
+  linked: number;
   unmatched: Array<{ year: number; song: string; artist: string }>;
   playlist: { id: string | null; name: string | null };
 }
@@ -112,7 +113,8 @@ export async function importSeasonArchive(
   const now = new Date();
   const docs: EventDoc[] = [];
   const unmatched: ImportResult['unmatched'] = [];
-  let matched = 0;
+  let linkedDocs = 0;
+  const backfills: Array<{ year: number; row: ArchiveSong; set: Partial<EventDoc> }> = [];
 
   for (const season of data.seasons) {
     const start = new Date(season.date).getTime();
@@ -122,8 +124,11 @@ export async function importSeasonArchive(
     let index = 0;
     for (const row of season.songs) {
       const link = known.get(`${normalizeSong(row.song)}|${normalizeFirstArtist(row.artist)}`);
-      if (link) matched++;
-      else unmatched.push({ year: season.year, song: row.song, artist: row.artist });
+      if (!link) unmatched.push({ year: season.year, song: row.song, artist: row.artist });
+      const set: Partial<EventDoc> = {};
+      if (link) Object.assign(set, Object.fromEntries(Object.entries(link).filter(([, v]) => v != null)));
+      if (playlist.id) Object.assign(set, { playlist: playlist.name, playlistId: playlist.id });
+      if (Object.keys(set).length > 0) backfills.push({ year: season.year, row, set });
       const track: Linked = link ?? { song: row.song, artist: row.artist, album: null, albumArt: null, trackId: null };
 
       const scored = Object.entries(row.byPlayer).map(([name, n]) => [slugFor(name), n] as [string, number]);
@@ -133,6 +138,7 @@ export async function importSeasonArchive(
       goals.push(['opponent', row.goalsAgainst]);
 
       for (const [actor, count] of goals) {
+        if (Object.keys(set).length > 0) linkedDocs += count;
         const prefix = `import:${season.year}:${normalizeSong(row.song)}:${normalizeName(row.artist)}:${actor}`;
         for (let k = 0; k < count; k++) {
           const n = (seen.get(prefix) ?? 0) + 1;
@@ -167,5 +173,25 @@ export async function importSeasonArchive(
       inserted = err.result.insertedCount;
     }
   }
-  return { inserted, skipped: docs.length - inserted, matched, unmatched, playlist };
+
+  // Backfill: events skipped as already imported may predate the tracker songs / playlist.
+  let updated = 0;
+  if (backfills.length > 0) {
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const res = await collections(db).events.bulkWrite(
+      backfills.map(({ year, row, set }) => ({
+        updateMany: {
+          filter: {
+            source: 'import' as const,
+            dedupeKey: { $regex: `^import:${year}:${esc(normalizeSong(row.song))}:${esc(normalizeName(row.artist))}:` },
+          },
+          update: { $set: set },
+        },
+      })),
+      { ordered: false },
+    );
+    updated = res.modifiedCount;
+  }
+  const linked = (inserted === docs.length ? linkedDocs : 0) + updated;
+  return { inserted, skipped: docs.length - inserted, linked, unmatched, playlist };
 }
