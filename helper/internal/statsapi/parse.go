@@ -22,6 +22,10 @@ const overtimeBase = 10000
 // "MatchGuid".
 type Parser struct {
 	Now func() time.Time
+	// Song, if set, returns the track playing on this PC (nil when none). It
+	// is read when a stat message arrives (for a goal: at GoalScored, not
+	// when the goal is flushed) and must return quickly (media.Cache does).
+	Song func() *model.Song
 
 	guid      string
 	live      bool     // a MatchInitialized/CountdownBegin/RoundStarted was seen
@@ -44,6 +48,11 @@ type Parser struct {
 
 // NewParser returns a Parser using the wall clock, as an app.Source.
 func NewParser() app.Source { return &Parser{Now: time.Now} }
+
+// NewSongParser is NewParser with a song source stamped on stat events.
+func NewSongParser(song func() *model.Song) app.Source {
+	return &Parser{Now: time.Now, Song: song}
+}
 
 var (
 	_ app.Source  = (*Parser)(nil)
@@ -117,7 +126,7 @@ func decode(raw json.RawMessage) (string, *message, bool) {
 }
 
 func (p *Parser) reset(guid string) {
-	*p = Parser{Now: p.Now, guid: guid, teams: map[string]int{}, seen: map[string]bool{}}
+	*p = Parser{Now: p.Now, Song: p.Song, guid: guid, teams: map[string]int{}, seen: map[string]bool{}}
 }
 
 // Feed parses one message and returns the events it produces (often none).
@@ -165,21 +174,21 @@ func (p *Parser) Feed(raw json.RawMessage) []model.Event {
 			break // repeated before any clock reading
 		}
 		out = p.flushGoal(out)
-		p.goal = &model.Event{Kind: "goal", Scorer: p.ref(m.Scorer)}
+		p.goal = &model.Event{Kind: "goal", Scorer: p.ref(m.Scorer), Song: p.song()}
 	case "StatfeedEvent":
 		if m.MainTarget == nil || m.MainTarget.Name == "" {
 			break
 		}
 		switch m.EventName {
 		case "Assist":
-			out = p.stat(out, model.Event{Kind: "assist", Player: p.ref(m.MainTarget)})
+			out = p.stat(out, model.Event{Kind: "assist", Player: p.ref(m.MainTarget), Song: p.song()})
 		case "Save", "EpicSave":
-			out = p.stat(out, model.Event{Kind: "save", Player: p.ref(m.MainTarget)})
+			out = p.stat(out, model.Event{Kind: "save", Player: p.ref(m.MainTarget), Song: p.song()})
 		case "Demolish":
 			if m.SecondaryTarget == nil || m.SecondaryTarget.Name == "" {
 				break
 			}
-			out = p.stat(out, model.Event{Kind: "demo", Attacker: p.ref(m.MainTarget), Victim: p.ref(m.SecondaryTarget)})
+			out = p.stat(out, model.Event{Kind: "demo", Attacker: p.ref(m.MainTarget), Victim: p.ref(m.SecondaryTarget), Song: p.song()})
 		}
 		// Goal comes from GoalScored; Shot, Win, LongGoal etc. are ignored.
 	case "MatchEnded":
@@ -296,6 +305,14 @@ func (p *Parser) gameTime() float64 {
 		return overtimeBase + p.clock
 	}
 	return p.clock
+}
+
+// song reads the song source, if any.
+func (p *Parser) song() *model.Song {
+	if p.Song == nil {
+		return nil
+	}
+	return p.Song()
 }
 
 func (p *Parser) event(e model.Event) model.Event {

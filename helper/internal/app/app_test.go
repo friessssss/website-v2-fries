@@ -827,3 +827,41 @@ func TestDropFailureAfterRejectionBacksOff(t *testing.T) {
 		t.Fatalf("no backoff between failed drops: sleeps %v", got)
 	}
 }
+
+func TestHeartbeatCarriesSong(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrRetryable })
+	var mu sync.Mutex
+	cur := model.LocalSong("Uprising", "Muse")
+	h.deps.Song = func() *model.Song { mu.Lock(); defer mu.Unlock(); return cur }
+	h.src.events["g"] = []model.Event{goalEv(1)}
+	h.src.inMatch.Store(true)
+	h.stream.ch <- item{raw: json.RawMessage("g")}
+	h.start()
+	waitFor(t, "goal queued", func() bool { return h.q.Len() >= 1 })
+
+	beats := func() []model.Event {
+		var hb []model.Event
+		for _, e := range h.q.Peek(1000) {
+			if e.Kind == "heartbeat" {
+				hb = append(hb, e)
+			}
+		}
+		return hb
+	}
+	h.hbTick <- struct{}{}
+	h.hbTick <- struct{}{}
+	hb := beats()
+	if len(hb) < 1 || hb[0].Song == nil || *hb[0].Song != *model.LocalSong("Uprising", "Muse") {
+		t.Fatalf("heartbeat song: %+v", hb)
+	}
+	mu.Lock()
+	cur = nil
+	mu.Unlock()
+	n := len(hb)
+	h.hbTick <- struct{}{}
+	h.hbTick <- struct{}{}
+	hb = beats()
+	if len(hb) <= n || hb[len(hb)-1].Song != nil {
+		t.Fatalf("heartbeat with nothing playing: %+v", hb)
+	}
+}

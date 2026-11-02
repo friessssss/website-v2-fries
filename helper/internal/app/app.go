@@ -87,8 +87,8 @@ type Queue interface {
 	Len() int
 }
 
-// Deps are the injected collaborators. Now, Sleep, Logf, OnState and OnGoal
-// are optional.
+// Deps are the injected collaborators. Now, Sleep, Logf, OnState, OnGoal
+// and Song are optional.
 type Deps struct {
 	Dial      func(ctx context.Context) (Stream, error)
 	NewSource func() Source
@@ -99,6 +99,9 @@ type Deps struct {
 	OnState   func(State)
 	OnGoal    func(display, song string)
 	Logf      func(format string, args ...any)
+	// Song returns the track playing on this PC (nil when none); it is
+	// stamped on heartbeats.
+	Song func() *model.Song
 }
 
 // App is the orchestrator.
@@ -391,7 +394,11 @@ func (a *App) heartbeat(ctx context.Context) {
 		if !in || guid == "" { // the server rejects an empty matchGuid for the whole batch
 			continue
 		}
-		a.pushPending(model.Event{Kind: "heartbeat", MatchGUID: guid, At: a.d.Now()})
+		hb := model.Event{Kind: "heartbeat", MatchGUID: guid, At: a.d.Now()}
+		if a.d.Song != nil {
+			hb.Song = a.d.Song()
+		}
+		a.pushPending(hb)
 	}
 }
 

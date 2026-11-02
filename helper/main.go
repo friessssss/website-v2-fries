@@ -17,6 +17,7 @@ import (
 
 	"github.com/friessssss/website-v2-fries/helper/internal/api"
 	"github.com/friessssss/website-v2-fries/helper/internal/app"
+	"github.com/friessssss/website-v2-fries/helper/internal/media"
 	"github.com/friessssss/website-v2-fries/helper/internal/queue"
 	"github.com/friessssss/website-v2-fries/helper/internal/rlpath"
 	"github.com/friessssss/website-v2-fries/helper/internal/setup"
@@ -276,11 +277,16 @@ func run() int {
 		Tray: tray, QueueLen: q.Len, Logf: logf,
 		SavePaused: func(p bool) { saveSettings(func(s *setup.Settings) { s.Paused = p }) },
 	}
+	// The song playing on this PC rides along with each stat event and
+	// heartbeat; the cache keeps the OS calls off the parser's hot path.
+	songs := media.NewCache(media.NowPlaying)
+	go songs.Song() // warm up, so the first goal does not wait on WinRT
 	a := app.New(app.Deps{
 		Dial: func(ctx context.Context) (app.Stream, error) {
 			return statsapi.Dial(ctx, "127.0.0.1", []int{49123, 49124})
 		},
-		NewSource: statsapi.NewParser,
+		NewSource: func() app.Source { return statsapi.NewSongParser(songs.Song) },
+		Song:      songs.Song,
 		Poster:    site,
 		Queue:     q,
 		OnState:   ctl.OnState, // non-blocking: records state, posts to the tray mailbox
