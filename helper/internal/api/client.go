@@ -173,3 +173,16 @@ func (c *Client) Latest(ctx context.Context) (version, url string, err error) {
 	}
 	return out.Version, out.DownloadURL, nil
 }
+
+// Ping tells the site this helper is alive (keeps the live dot on between
+// matches). It answers 204; 401 returns ErrUnauthorized.
+func (c *Client) Ping(ctx context.Context) error {
+	status, body, err := c.do(ctx, http.MethodPost, "/api/rl/v1/ping", nil, true)
+	if err != nil {
+		return err
+	}
+	if status == 204 || status == 200 {
+		return nil
+	}
+	return classify(status, body)
+}

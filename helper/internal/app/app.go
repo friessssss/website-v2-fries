@@ -185,6 +185,15 @@ func (a *App) Resume() {
 	a.update()
 }
 
+// SetNeedsPair switches to NeedsPair (for example when a liveness ping is
+// rejected) and stops flushing until Resume.
+func (a *App) SetNeedsPair() {
+	a.mu.Lock()
+	a.needsPair = true
+	a.mu.Unlock()
+	a.update()
+}
+
 // update recomputes the state and calls OnState if it changed.
 func (a *App) update() {
 	a.stateMu.Lock()

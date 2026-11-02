@@ -5,6 +5,7 @@ package winsys
 
 import (
 	"errors"
+	"time"
 
 	"github.com/friessssss/website-v2-fries/helper/internal/app"
 )
@@ -32,3 +33,17 @@ func (t *Tray) SetToastsOn(on bool)                     {}
 func (t *Tray) ToastsOn() bool                          { return true }
 func (t *Tray) Run()                                    {}
 func (t *Tray) SetState(s app.State, statusText string) {}
+
+// RelaunchedFlag marks a relaunched process (see the Windows build).
+const RelaunchedFlag = "--relaunched"
+
+func SwapIfPending(args []string) (bool, error) { return false, nil }
+func Relaunch(exe string, args []string) error  { return errUnsupported }
+func ProcessRunning(name string) bool           { return false }
+func SteamRoot() string                         { return "" }
+func InstallDir() (string, error)               { return "", errUnsupported }
+func OpenURL(url string) error                  { return errUnsupported }
+func (t *Tray) Quit()                           {}
+func SingleInstance(wait time.Duration) (func(), bool, error) {
+	return func() {}, true, nil
+}

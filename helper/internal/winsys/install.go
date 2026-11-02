@@ -3,7 +3,6 @@
 package winsys
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,11 +21,10 @@ const (
 // already runs from there, registers it under HKCU Run, and returns the
 // installed exe path. No admin rights are needed.
 func InstallSelf() (string, error) {
-	base := os.Getenv("LOCALAPPDATA")
-	if base == "" {
-		return "", fmt.Errorf("LOCALAPPDATA is not set")
+	dir, err := InstallDir()
+	if err != nil {
+		return "", err
 	}
-	dir := filepath.Join(base, installDirName)
 	dst := filepath.Join(dir, installExeName)
 
 	self, err := os.Executable()

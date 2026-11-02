@@ -639,3 +639,18 @@ func TestFailedQueuePushIsRetriedNotLost(t *testing.T) {
 	fq.fail.Store(false)
 	waitFor(t, "delivered after recovery", func() bool { return len(h.poster.Delivered()) == 1 })
 }
+
+func TestSetNeedsPairShowsStateAndBlocksFlushUntilResume(t *testing.T) {
+	h := newHarness(t, okAll)
+	h.dialErr.Store(true)
+	a, _, _ := h.start()
+	a.SetNeedsPair()
+	waitFor(t, "NeedsPair", func() bool { return hasState(h, NeedsPair) })
+	h.q.Push(goalEv(1))
+	time.Sleep(50 * time.Millisecond)
+	if c := h.poster.Calls(); c != 0 {
+		t.Fatalf("posted while NeedsPair: %d", c)
+	}
+	a.Resume()
+	waitFor(t, "delivery after resume", func() bool { return len(h.poster.Delivered()) == 1 })
+}
