@@ -350,7 +350,7 @@ func TestUnauthorizedStopsUntilResume(t *testing.T) {
 	waitFor(t, "delivery after resume", func() bool { return len(h.poster.Delivered()) == 1 })
 }
 
-func TestRejectedDropsBatchAndContinues(t *testing.T) {
+func TestSingleRejectionIsRetriedNotDropped(t *testing.T) {
 	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
 		if call == 1 {
 			return nil, api.ErrRejected{Status: 400, Body: "bad"}
@@ -360,9 +360,10 @@ func TestRejectedDropsBatchAndContinues(t *testing.T) {
 	h.dialErr.Store(true)
 	h.q.Push(goalEv(1))
 	h.start()
-	waitFor(t, "first dropped", func() bool { return h.q.Len() == 0 })
+	// One 400 is not enough to drop: the event is held and delivered on retry.
+	waitFor(t, "first delivered on retry", func() bool { return len(h.poster.Delivered()) == 1 })
 	h.q.Push(goalEv(2))
-	waitFor(t, "second delivered", func() bool { return len(h.poster.Delivered()) == 1 })
+	waitFor(t, "second delivered", func() bool { return len(h.poster.Delivered()) == 2 })
 	if hasState(h, NeedsPair) {
 		t.Fatal("rejection must not need pairing")
 	}
@@ -691,5 +692,138 @@ func TestBufferedEventFlushedWhenStreamEnds(t *testing.T) {
 	waitFor(t, "buffered goal queued", func() bool { return h.q.Len() == 1 })
 	if got := h.q.Peek(1)[0]; got.Kind != "goal" || got.At != goalEv(7).At {
 		t.Fatalf("queued %+v", got)
+	}
+}
+
+func TestInMatchFollowsCurrentSource(t *testing.T) {
+	h := newHarness(t, okAll)
+	a, cancel, done := h.start()
+	defer func() { cancel(); <-done }()
+	if a.InMatch() {
+		t.Fatal("no match yet")
+	}
+	waitFor(t, "connected", func() bool { return hasState(h, Connected) })
+	h.src.inMatch.Store(true)
+	if !a.InMatch() {
+		t.Fatal("in match")
+	}
+	h.src.inMatch.Store(false)
+	if a.InMatch() {
+		t.Fatal("match over")
+	}
+}
+
+// A rejected event is held and retried (a site fault can answer 400 to
+// everything), but a permanently bad head event is dropped after
+// MaxRejectAttempts so it cannot block the events behind it.
+func TestPermanentlyRejectedHeadIsDroppedAfterAttempts(t *testing.T) {
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		for _, e := range evs {
+			if e.At.Second() == 1 { // event 1 is bad forever
+				return nil, api.ErrRejected{Status: 400, Body: "bad"}
+			}
+		}
+		return okAll(call, evs)
+	})
+	h.dialErr.Store(true)
+	h.q.Push(goalEv(1), goalEv(2)) // the bad event sits at the head
+	h.start()
+	waitFor(t, "valid event delivered", func() bool {
+		for _, e := range h.poster.Delivered() {
+			if e.At.Second() == 2 {
+				return true
+			}
+		}
+		return false
+	})
+	waitFor(t, "queue empty", func() bool { return h.q.Len() == 0 })
+	for _, e := range h.poster.Delivered() {
+		if e.At.Second() == 1 {
+			t.Fatal("bad event delivered")
+		}
+	}
+	if c := h.poster.Calls(); c < 1+MaxRejectAttempts {
+		t.Fatalf("dropped after %d calls, want >= %d attempts", c, MaxRejectAttempts)
+	}
+}
+
+func TestTransientRejectionsDropNothing(t *testing.T) {
+	var reject atomic.Int32
+	reject.Store(4) // four 400s, then the site recovers
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		if reject.Add(-1) >= 0 {
+			return nil, api.ErrRejected{Status: 400, Body: "bad"}
+		}
+		return okAll(call, evs)
+	})
+	h.dialErr.Store(true)
+	for i := 1; i <= 3; i++ {
+		h.q.Push(goalEv(i))
+	}
+	h.start()
+	waitFor(t, "all delivered", func() bool { return len(h.poster.Delivered()) == 3 })
+	if !hasState(h, Queued) {
+		t.Fatal("want Queued while holding a rejected event")
+	}
+	got := h.sleepsOf(DialRetry, HeartbeatEvery, FlushEvery)
+	if len(got) < 2 || got[0] != 4*time.Second {
+		t.Fatalf("sleeps %v: rejected singles must back off", got)
+	}
+}
+
+// The hold is also bounded in time: a head event rejected continuously for
+// MaxRejectHold is dropped even before MaxRejectAttempts.
+func TestRejectedHeadDroppedAfterHoldTime(t *testing.T) {
+	var now atomic.Int64
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now.Store(base.UnixNano())
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		if evs[0].At.Second() == 1 {
+			if call >= 2 {
+				now.Store(base.Add(MaxRejectHold).UnixNano()) // 6 h pass between attempts
+			}
+			return nil, api.ErrRejected{Status: 400, Body: "bad"}
+		}
+		return okAll(call, evs)
+	})
+	h.deps.Now = func() time.Time { return time.Unix(0, now.Load()).UTC() }
+	h.dialErr.Store(true)
+	h.q.Push(goalEv(1))
+	h.start()
+	waitFor(t, "dropped", func() bool { return h.q.Len() == 0 })
+	if c := h.poster.Calls(); c >= MaxRejectAttempts {
+		t.Fatalf("dropped by attempts (%d), not by time", c)
+	}
+}
+
+// dropFailQueue fails Drop while fail is set.
+type dropFailQueue struct {
+	*queue.Queue
+	fail  atomic.Bool
+	drops atomic.Int32
+}
+
+func (f *dropFailQueue) Drop(n int) error {
+	f.drops.Add(1)
+	if f.fail.Load() {
+		return errors.New("disk full")
+	}
+	return f.Queue.Drop(n)
+}
+
+func TestDropFailureAfterRejectionBacksOff(t *testing.T) {
+	h := newHarness(t, func(call int, evs []model.Event) ([]api.Result, error) {
+		return nil, api.ErrRejected{Status: 400, Body: "bad"}
+	})
+	dq := &dropFailQueue{Queue: h.q}
+	dq.fail.Store(true)
+	h.deps.Queue = dq
+	h.dialErr.Store(true)
+	h.q.Push(goalEv(1))
+	h.start()
+	waitFor(t, "two drop attempts", func() bool { return dq.drops.Load() >= 2 })
+	got := h.sleepsOf(DialRetry, HeartbeatEvery)
+	if len(got) == 0 || got[0] != FlushEvery {
+		t.Fatalf("no backoff between failed drops: sleeps %v", got)
 	}
 }

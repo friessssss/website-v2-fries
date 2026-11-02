@@ -16,28 +16,30 @@ import (
 // Settings persist in settings.json in the install dir.
 type Settings struct {
 	Toasts bool            `json:"toasts"`
-	RLDir  string          `json:"rlDir,omitempty"` // a folder the user picked, tried first next time
-	Shown  map[string]bool `json:"shown,omitempty"` // once-only notices already shown
+	Paused bool            `json:"paused,omitempty"` // tracking paused from the tray; kept across restarts
+	RLDir  string          `json:"rlDir,omitempty"`  // a folder the user picked, tried first next time
+	Shown  map[string]bool `json:"shown,omitempty"`  // once-only notices already shown
+
+	// PendingUpdate is the version the helper restarted into for an update.
+	// The next start compares it with its own version (see ResolvePendingUpdate).
+	PendingUpdate string `json:"pendingUpdate,omitempty"`
+	// SkipUpdate is a version whose install did not take; it is not
+	// downloaded again before SkipUntil.
+	SkipUpdate string    `json:"skipUpdate,omitempty"`
+	SkipUntil  time.Time `json:"skipUntil,omitzero"`
 }
 
 // LoadSettings reads path. A missing or unreadable file gives the defaults
 // (toasts on).
 func LoadSettings(path string) Settings {
-	var raw struct {
-		Toasts *bool           `json:"toasts"`
-		RLDir  string          `json:"rlDir"`
-		Shown  map[string]bool `json:"shown"`
-	}
-	s := Settings{Toasts: true}
 	b, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(b, &raw) != nil {
-		return s
+	if err != nil {
+		return Settings{Toasts: true}
 	}
-	if raw.Toasts != nil {
-		s.Toasts = *raw.Toasts
+	s := Settings{Toasts: true} // a file without "toasts" keeps them on
+	if json.Unmarshal(b, &s) != nil {
+		return Settings{Toasts: true}
 	}
-	s.RLDir = raw.RLDir
-	s.Shown = raw.Shown
 	return s
 }
 
@@ -87,6 +89,17 @@ func (st *SettingsStore) Once(key string) bool {
 	st.s.Shown[key] = true
 	_ = SaveSettings(st.path, st.s)
 	return true
+}
+
+// Forget removes key so the next Once(key) returns true again.
+func (st *SettingsStore) Forget(key string) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.s.Shown[key] {
+		return
+	}
+	delete(st.s.Shown, key)
+	_ = SaveSettings(st.path, st.s)
 }
 
 // SaveSettings writes path atomically, creating its directory.

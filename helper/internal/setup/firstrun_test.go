@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -154,9 +155,9 @@ func existsSet(paths ...string) func(string) bool {
 func TestFindRLUsesCandidateWithoutAsking(t *testing.T) {
 	d := &fakeDialogs{folders: []string{"/should/not/ask"}}
 	exists := existsSet(filepath.Join("/b/rl", "TAGame", "Config"))
-	dir, ok := FindRL([]string{"/a/rl", "/b/rl"}, exists, d, true)
-	if !ok || dir != "/b/rl" {
-		t.Fatal(dir, ok)
+	dirs, ok := FindRL([]string{"/a/rl", "/b/rl"}, exists, d, true)
+	if !ok || !reflect.DeepEqual(dirs, []string{"/b/rl"}) {
+		t.Fatal(dirs, ok)
 	}
 	if len(d.folders) != 1 {
 		t.Fatal("asked for a folder")
@@ -166,12 +167,22 @@ func TestFindRLUsesCandidateWithoutAsking(t *testing.T) {
 func TestFindRLFallsBackToPicker(t *testing.T) {
 	d := &fakeDialogs{folders: []string{"/wrong", "/games/Rocket League"}}
 	exists := existsSet(filepath.Join("/games/Rocket League", "TAGame", "Config"))
-	dir, ok := FindRL([]string{"/a/rl"}, exists, d, true)
-	if !ok || dir != "/games/Rocket League" {
-		t.Fatal(dir, ok)
+	dirs, ok := FindRL([]string{"/a/rl"}, exists, d, true)
+	if !ok || !reflect.DeepEqual(dirs, []string{"/games/Rocket League"}) {
+		t.Fatal(dirs, ok)
 	}
 	if got := d.Infos(); len(got) != 1 || got[0] != MsgNotRLFolder {
 		t.Fatalf("infos %q", got)
+	}
+}
+
+// Steam and Epic both installed: both are returned so both get patched.
+func TestFindRLReturnsEveryInstall(t *testing.T) {
+	d := &fakeDialogs{folders: []string{"/should/not/ask"}}
+	exists := existsSet(filepath.Join("/steam/rl", "TAGame", "Config"), filepath.Join("/epic/rl", "TAGame", "Config"))
+	dirs, ok := FindRL([]string{"/steam/rl", "/missing", "/epic/rl", "/steam/rl/"}, exists, d, true)
+	if !ok || !reflect.DeepEqual(dirs, []string{"/steam/rl", "/epic/rl"}) {
+		t.Fatal(dirs, ok)
 	}
 }
 
@@ -244,6 +255,12 @@ func (o *onceSet) Once(k string) bool {
 	return true
 }
 
+func (o *onceSet) Forget(k string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.seen, k)
+}
+
 func iniDeps(m *memFS, running bool) IniDeps {
 	return IniDeps{FS: m, RLRunning: func() bool { return running }, Once: (&onceSet{}).Once, Logf: nolog}
 }
@@ -258,7 +275,7 @@ func msgs(ns []Notice) []string {
 
 func TestEnableChangedWhileRunningAsksForRestart(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\r\nPacketSendRate=0\r\n")}}
-	changed, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	changed, ns, _ := EnableStatsAPI("/rl", iniDeps(m, true))
 	if !changed || string(m.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\r\nPacketSendRate=20\r\n" {
 		t.Fatalf("ini %q", m.files[defaultIni])
 	}
@@ -269,14 +286,14 @@ func TestEnableChangedWhileRunningAsksForRestart(t *testing.T) {
 
 func TestEnableChangedNotRunningNoNotice(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")}}
-	if _, ns := EnableStatsAPI("/rl", iniDeps(m, false)); len(ns) != 0 {
+	if _, ns, _ := EnableStatsAPI("/rl", iniDeps(m, false)); len(ns) != 0 {
 		t.Fatal(ns)
 	}
 }
 
 func TestEnableUnchangedWhileRunningNoNotice(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n")}}
-	if changed, ns := EnableStatsAPI("/rl", iniDeps(m, true)); changed || len(ns) != 0 {
+	if changed, ns, _ := EnableStatsAPI("/rl", iniDeps(m, true)); changed || len(ns) != 0 {
 		t.Fatal(changed, ns)
 	}
 }
@@ -314,7 +331,7 @@ func TestEnableExistsErrorFallsBackToDefault(t *testing.T) {
 
 func TestEnableUnsupportedEncodingGivesOnceNoticeWithNextStep(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: {0xFF, 0xFE, '[', 0}}}
-	changed, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	changed, ns, _ := EnableStatsAPI("/rl", iniDeps(m, true))
 	if changed || len(ns) != 1 || ns[0].Key == "" {
 		t.Fatalf("notices %+v", ns)
 	}
@@ -328,7 +345,7 @@ func TestEnableUnsupportedEncodingGivesOnceNoticeWithNextStep(t *testing.T) {
 
 func TestEnableReadErrorGivesOnceNoticeWithNextStep(t *testing.T) {
 	m := &memFS{files: map[string][]byte{}}
-	_, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	_, ns, _ := EnableStatsAPI("/rl", iniDeps(m, true))
 	if len(ns) != 1 || ns[0].Key == "" || !strings.Contains(ns[0].Msg, "PacketSendRate=20") || !strings.Contains(ns[0].Msg, defaultIni) {
 		t.Fatalf("notices %+v", ns)
 	}
@@ -352,23 +369,34 @@ func newDenied() *deniedFS {
 	return &deniedFS{memFS: memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")}}, locked: true}
 }
 
-func TestEnableAccessDeniedElevatesOnceAndSucceeds(t *testing.T) {
-	d := newDenied()
-	var elevated []string
-	deps := IniDeps{FS: d, RLRunning: func() bool { return true }, Once: (&onceSet{}).Once, Logf: nolog,
+// elevDeps patches through a fake elevated child, counting calls.
+func elevDeps(d *deniedFS, once *onceSet, running bool, fail bool, calls *int) IniDeps {
+	return IniDeps{FS: d, RLRunning: func() bool { return running }, Once: once.Once, Forget: once.Forget, Logf: nolog,
 		Elevate: func(path string) error {
-			elevated = append(elevated, path)
+			*calls++
+			if fail {
+				return errors.New("cancelled by user")
+			}
 			d.locked = false
 			_, err := statsini.Apply(path, d) // what the elevated --patch-ini child does
 			d.locked = true
 			return err
 		}}
-	changed, ns := EnableStatsAPI("/rl", deps)
-	if len(elevated) != 1 || elevated[0] != defaultIni {
-		t.Fatalf("elevated %q", elevated)
+}
+
+// The UAC prompt never runs inside EnableStatsAPI (startup must not block on
+// it): it comes back as a deferred step whose notices follow it (final
+// review I4).
+func TestEnableAccessDeniedDefersElevationThenSucceeds(t *testing.T) {
+	d := newDenied()
+	calls := 0
+	changed, ns, elev := EnableStatsAPI("/rl", elevDeps(d, &onceSet{}, true, false, &calls))
+	if changed || len(ns) != 0 || calls != 0 || elev == nil {
+		t.Fatalf("changed=%v notices %+v calls %d elev=%v", changed, ns, calls, elev != nil)
 	}
-	if !changed || len(ns) != 1 || ns[0].Msg != MsgRestartRL {
-		t.Fatalf("changed=%v notices %+v", changed, ns)
+	changed, ns = elev()
+	if calls != 1 || !changed || len(ns) != 1 || ns[0].Msg != MsgRestartRL {
+		t.Fatalf("calls %d changed=%v notices %+v", calls, changed, ns)
 	}
 	if string(d.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n" {
 		t.Fatal("not patched")
@@ -379,9 +407,9 @@ func TestEnableAccessDeniedElevationDeclinedGivesAdminNotice(t *testing.T) {
 	d := newDenied()
 	once := &onceSet{}
 	calls := 0
-	deps := IniDeps{FS: d, RLRunning: func() bool { return false }, Once: once.Once, Logf: nolog,
-		Elevate: func(path string) error { calls++; return errors.New("cancelled by user") }}
-	changed, ns := EnableStatsAPI("/rl", deps)
+	deps := elevDeps(d, once, false, true, &calls)
+	_, _, elev := EnableStatsAPI("/rl", deps)
+	changed, ns := elev()
 	if changed || len(ns) != 1 || ns[0].Msg != NeedsAdminMsg(defaultIni) || ns[0].Key == "" {
 		t.Fatalf("changed=%v notices %+v", changed, ns)
 	}
@@ -389,22 +417,78 @@ func TestEnableAccessDeniedElevationDeclinedGivesAdminNotice(t *testing.T) {
 	if NeedsAdminMsg(defaultIni) != want {
 		t.Fatal(NeedsAdminMsg(defaultIni))
 	}
-	// Next boot: no second UAC prompt, same (once-keyed) notice.
-	_, ns2 := EnableStatsAPI("/rl", deps)
-	if calls != 1 {
-		t.Fatalf("elevated %d times", calls)
+	// Next boot, same file: no second UAC prompt, same (once-keyed) notice.
+	_, ns2, elev2 := EnableStatsAPI("/rl", deps)
+	if elev2 != nil || calls != 1 {
+		t.Fatalf("second prompt offered (calls %d)", calls)
 	}
 	if len(ns2) != 1 || ns2[0].Key != ns[0].Key {
 		t.Fatalf("notices %+v", ns2)
 	}
 }
 
+// A Rocket League update or file verify that resets a patched ini must not
+// silently stop tracking: one more elevation is allowed (final review I5).
+func TestEnableRevertedAfterElevatedPatchElevatesAgain(t *testing.T) {
+	d := newDenied()
+	orig := append([]byte(nil), d.files[defaultIni]...)
+	once := &onceSet{}
+	calls := 0
+	deps := elevDeps(d, once, true, false, &calls)
+	_, _, elev := EnableStatsAPI("/rl", deps)
+	elev()
+	d.files[defaultIni] = append([]byte(nil), orig...) // RL update put the old file back
+	_, ns, elev := EnableStatsAPI("/rl", deps)
+	if elev == nil || len(ns) != 0 {
+		t.Fatalf("no new elevation after revert: notices %+v", ns)
+	}
+	if _, ns = elev(); calls != 2 || len(ns) != 1 || ns[0].Msg != MsgRestartRL {
+		t.Fatalf("calls %d notices %+v", calls, ns)
+	}
+}
+
+// A declined prompt is not repeated for the same file, but a file whose
+// contents changed since (an RL update) gets a fresh attempt and notice.
+func TestEnableDeclinedThenFileChangedElevatesAgain(t *testing.T) {
+	d := newDenied()
+	once := &onceSet{}
+	calls := 0
+	deps := elevDeps(d, once, false, true, &calls)
+	_, _, elev := EnableStatsAPI("/rl", deps)
+	_, first := elev()
+	d.files[defaultIni] = []byte("; updated by Rocket League\n[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")
+	_, _, elev = EnableStatsAPI("/rl", deps)
+	if elev == nil {
+		t.Fatal("changed file must allow another elevation")
+	}
+	_, second := elev()
+	if calls != 2 || len(second) != 1 || second[0].Key == first[0].Key {
+		t.Fatalf("calls %d: want a fresh notice key, got %q then %q", calls, first[0].Key, second[0].Key)
+	}
+}
+
 func TestEnableAccessDeniedWithoutElevator(t *testing.T) {
 	d := newDenied()
 	deps := IniDeps{FS: d, RLRunning: func() bool { return false }, Once: (&onceSet{}).Once, Logf: nolog}
-	_, ns := EnableStatsAPI("/rl", deps)
-	if len(ns) != 1 || ns[0].Msg != NeedsAdminMsg(defaultIni) {
+	_, ns, elev := EnableStatsAPI("/rl", deps)
+	if elev != nil || len(ns) != 1 || ns[0].Msg != NeedsAdminMsg(defaultIni) {
 		t.Fatalf("notices %+v", ns)
+	}
+}
+
+// RunElevations runs each deferred elevation and shows its notices right
+// after it, in order (the tray is already up when this runs).
+func TestRunElevationsShowsNoticesAfterEach(t *testing.T) {
+	var log []string
+	elevs := []Elevation{
+		func() (bool, []Notice) { log = append(log, "elevate a"); return true, []Notice{{Msg: "A"}} },
+		func() (bool, []Notice) { log = append(log, "elevate b"); return false, []Notice{{Key: "k", Msg: "B"}} },
+	}
+	once := &onceSet{}
+	show := func(m string) { log = append(log, "show "+m) }
+	RunElevations(elevs, once.Once, show, nolog)
+	if strings.Join(log, ",") != "elevate a,show A,elevate b,show B" {
+		t.Fatal(log)
 	}
 }
 
@@ -460,5 +544,11 @@ func TestPatchIniExitCodes(t *testing.T) {
 	}
 	if c := PatchIni(taIni, m); c != PatchFailed {
 		t.Fatal("missing file must fail", c)
+	}
+}
+
+func TestMsgAlreadyRunningCopy(t *testing.T) {
+	if MsgAlreadyRunning != "RL Goal Tracker is already running in your tray." {
+		t.Fatal(MsgAlreadyRunning)
 	}
 }

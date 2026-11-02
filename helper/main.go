@@ -29,7 +29,7 @@ import (
 // Set at build time with -ldflags "-X main.version=… -X main.baseURL=…".
 var (
 	version = "0.0.0-dev"
-	baseURL = "https://zachrobertson.co"
+	baseURL = "https://www.zachrobertson.co" // the canonical host: no redirect in front of the API
 )
 
 const (
@@ -54,7 +54,6 @@ func (dialogs) Info(msg string)                { winsys.Info(msg) }
 type keyStore struct{}
 
 func (keyStore) Save(k string) error { return winsys.SaveKey(k) }
-func (keyStore) Delete() error       { return winsys.DeleteKey() }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
@@ -106,7 +105,12 @@ func run() int {
 	}
 	release, ok, lockErr := winsys.SingleInstance(wait)
 	if lockErr == nil && !ok {
-		return 0 // already running
+		// A user double-clicking the exe again gets told where it is; a
+		// relaunch that timed out waiting for its parent exits quietly.
+		if !*relaunched {
+			winsys.Info(setup.MsgAlreadyRunning)
+		}
+		return 0
 	}
 	if release == nil {
 		release = func() {}
@@ -147,6 +151,9 @@ func run() int {
 			logf("save settings: %v", err)
 		}
 	}
+	if settings.Get().PendingUpdate != "" {
+		saveSettings(func(s *setup.Settings) { setup.ResolvePendingUpdate(s, version, time.Now(), logf) })
+	}
 	tray := &winsys.Tray{}
 	tray.SetToastsOn(settings.Get().Toasts)
 
@@ -178,16 +185,30 @@ func run() int {
 	}
 	site.SetKey(key)
 
-	// 4. Find Rocket League and enable the Stats API. The folder picker is only
+	// 4. Install first, so a slow or declined UAC prompt later can never
+	// leave the helper uninstalled.
+	exe, err := winsys.InstallSelf()
+	if err != nil {
+		logf("install: %v", err)
+		if exe, err = os.Executable(); err != nil {
+			logf("executable: %v", err)
+		}
+	}
+
+	// 5. Find Rocket League and enable the Stats API. The folder picker is only
 	// shown on the first run (and from the tray menu) so a missing install
-	// doesn't nag every boot.
+	// doesn't nag every boot. An ini that needs admin rights is patched from
+	// the tray's OnReady (the UAC prompt must not block startup).
 	iniDeps := setup.IniDeps{
 		FS:        statsini.OSFS{},
 		RLRunning: func() bool { return winsys.ProcessRunning(rlProcess) },
 		Elevate: func(path string) error {
-			self, err := os.Executable()
-			if err != nil {
-				return err
+			self := exe
+			if self == "" {
+				var err error
+				if self, err = os.Executable(); err != nil {
+					return err
+				}
 			}
 			code, err := winsys.RunElevated(self, []string{"--patch-ini", path}, elevateTimeout)
 			if err != nil {
@@ -198,8 +219,9 @@ func run() int {
 			}
 			return nil
 		},
-		Once: settings.Once,
-		Logf: logf,
+		Once:   settings.Once,
+		Forget: settings.Forget,
+		Logf:   logf,
 	}
 	exists := func(p string) bool {
 		ok, err := statsini.OSFS{}.Exists(p)
@@ -208,36 +230,37 @@ func run() int {
 		}
 		return ok
 	}
-	findAndEnable := func(ask bool) (bool, []setup.Notice) {
+	// findAndEnable patches every Rocket League install it finds (Steam and
+	// Epic can both be present) and returns the elevations still to run.
+	findAndEnable := func(ask bool) (bool, []setup.Notice, []setup.Elevation) {
 		cands := rlpath.Candidates(winsys.SteamRoot(), os.ReadFile)
 		if d := settings.Get().RLDir; d != "" {
 			cands = append([]string{d}, cands...)
 		}
-		rlDir, found := setup.FindRL(cands, exists, dialogs{}, ask)
+		rlDirs, found := setup.FindRL(cands, exists, dialogs{}, ask)
 		if !found {
 			logf("rocket league not found")
-			return false, nil
+			return false, nil, nil
 		}
-		logf("rocket league at %s", rlDir)
-		if rlDir != settings.Get().RLDir {
-			saveSettings(func(s *setup.Settings) { s.RLDir = rlDir })
+		if rlDirs[0] != settings.Get().RLDir {
+			saveSettings(func(s *setup.Settings) { s.RLDir = rlDirs[0] })
 		}
-		_, ns := setup.EnableStatsAPI(rlDir, iniDeps)
-		return true, ns
+		var notices []setup.Notice
+		var elevs []setup.Elevation
+		for _, rlDir := range rlDirs {
+			logf("rocket league at %s", rlDir)
+			_, ns, elev := setup.EnableStatsAPI(rlDir, iniDeps)
+			notices = append(notices, ns...)
+			if elev != nil {
+				elevs = append(elevs, elev)
+			}
+		}
+		return true, notices, elevs
 	}
-	rlFound, ns := findAndEnable(firstRun)
+	rlFound, ns, elevs := findAndEnable(firstRun)
 	notices = append(notices, ns...)
 	if firstRun {
 		notices = append(notices, setup.FirstRunNotice(rlFound))
-	}
-
-	// 5. Install.
-	exe, err := winsys.InstallSelf()
-	if err != nil {
-		logf("install: %v", err)
-		if exe, err = os.Executable(); err != nil {
-			logf("executable: %v", err)
-		}
 	}
 
 	q, err := queue.Open(filepath.Join(dir, "queue.jsonl"))
@@ -251,6 +274,7 @@ func run() int {
 	ctl := &setup.Controller{
 		Dialogs: dialogs{}, Site: site, Keys: keyStore{}, Label: label,
 		Tray: tray, QueueLen: q.Len, Logf: logf,
+		SavePaused: func(p bool) { saveSettings(func(s *setup.Settings) { s.Paused = p }) },
 	}
 	a := app.New(app.Deps{
 		Dial: func(ctx context.Context) (app.Stream, error) {
@@ -269,6 +293,7 @@ func run() int {
 	})
 	ctl.SetApp(a)
 	ctl.OnState(app.Idle)
+	ctl.RestorePaused(settings.Get().Paused)
 	if mode == setup.ModeKeyError {
 		a.SetNeedsPair()
 	}
@@ -280,6 +305,9 @@ func run() int {
 	// 7. Self-update. Dev builds never update themselves. It starts from the
 	// tray's OnReady so its Restart (tray.Quit) can never run before tray.Run.
 	var relaunch atomic.Bool
+	// findMu serialises the startup notices + elevations (OnReady) and tray
+	// "Find Rocket League" passes; later clicks wait their turn.
+	var findMu sync.Mutex
 	var updater *setup.Updater
 	if exe != "" && !strings.Contains(version, "-dev") {
 		updater = &setup.Updater{
@@ -287,17 +315,27 @@ func run() int {
 			Latest:   site.Latest,
 			Download: update.Download,
 			Dest:     filepath.Join(filepath.Dir(exe), update.NewExeName),
-			Idle:     func() bool { return ctl.State() != app.Connected },
-			Restart:  func() { relaunch.Store(true); tray.Quit() },
-			Logf:     logf,
-			Sleep:    sleepCtx,
+			// Never restart mid-match; paused, offline or in menus is fine.
+			Idle:    func() bool { return !a.InMatch() },
+			Restart: func() { relaunch.Store(true); tray.Quit() },
+			Logf:    logf,
+			Sleep:   sleepCtx,
+			Skip:    func(v string) bool { return settings.Get().SkipsUpdate(v, time.Now()) },
+			MarkPending: func(v string) {
+				saveSettings(func(s *setup.Settings) { s.PendingUpdate = v })
+			},
 		}
 	}
 	tray.OnReady = func() {
 		if updater != nil {
 			go updater.Loop(ctx)
 		}
+		// Held for the whole startup notice + elevation pass, so a tray
+		// "Find Rocket League" click waits for it instead of overlapping.
+		findMu.Lock()
+		defer findMu.Unlock()
 		setup.ShowNotices(notices, settings.Once, winsys.Info, logf)
+		setup.RunElevations(elevs, settings.Once, winsys.Info, logf)
 	}
 
 	tray.OnOpen = func() {
@@ -311,20 +349,19 @@ func run() int {
 		saveSettings(func(s *setup.Settings) { s.Toasts = on })
 	}
 	tray.OnRepair = func() { ctl.Repair(ctx) }
-	var findMu sync.Mutex
 	tray.OnFindRL = func() {
-		if !findMu.TryLock() {
-			return
-		}
+		// Runs on its own goroutine (tray.call), so waiting is fine.
+		findMu.Lock()
 		defer findMu.Unlock()
-		found, ns := findAndEnable(true)
+		found, ns, elevs := findAndEnable(true)
 		if !found {
 			return
 		}
-		if len(ns) == 0 {
+		if len(ns) == 0 && len(elevs) == 0 {
 			ns = []setup.Notice{{Msg: setup.MsgRLFound}}
 		}
 		setup.ShowNotices(ns, settings.Once, winsys.Info, logf)
+		setup.RunElevations(elevs, settings.Once, winsys.Info, logf)
 	}
 	tray.OnQuit = cancel
 

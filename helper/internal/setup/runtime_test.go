@@ -243,7 +243,9 @@ func TestControllerRepairSuccess(t *testing.T) {
 	site := &fakeSite{fakePairer: fakePairer{key: "newkey"}}
 	c, _, a, keys := newCtl(&fakeDialogs{codes: []string{"ABC123"}}, site)
 	c.Repair(context.Background())
-	if keys.deleted != 1 || len(keys.saved) != 1 || keys.saved[0] != "newkey" {
+	// Save overwrites the stored key; deleting first could lose both keys
+	// if the save then failed (final review minor).
+	if keys.deleted != 0 || len(keys.saved) != 1 || keys.saved[0] != "newkey" {
 		t.Fatalf("keys %+v", keys)
 	}
 	if len(site.keys) != 1 || site.keys[0] != "newkey" || a.resumes.Load() != 1 {
@@ -400,7 +402,7 @@ func TestUpdaterDownloadsNewerThenRestartsWhenIdle(t *testing.T) {
 	u := &Updater{
 		Current: "1.0.0",
 		Latest: func(ctx context.Context) (string, string, error) {
-			return "helper-v1.1.0", "https://github.com/o/r/releases/download/helper-v1.1.0/RLGoalTracker.exe", nil
+			return "helper-v1.1.0", "https://github.com/friessssss/website-v2-fries/releases/download/helper-v1.1.0/RLGoalTracker.exe", nil
 		},
 		Download: func(ctx context.Context, url, dest string) error {
 			downloads = append(downloads, url+" -> "+dest)
@@ -418,7 +420,7 @@ func TestUpdaterDownloadsNewerThenRestartsWhenIdle(t *testing.T) {
 	idle.Store(true)
 	ticks <- struct{}{}
 	<-done
-	if len(downloads) != 1 || downloads[0] != "https://github.com/o/r/releases/download/helper-v1.1.0/RLGoalTracker.exe -> /inst/RLGoalTracker.new.exe" {
+	if len(downloads) != 1 || downloads[0] != "https://github.com/friessssss/website-v2-fries/releases/download/helper-v1.1.0/RLGoalTracker.exe -> /inst/RLGoalTracker.new.exe" {
 		t.Fatal(downloads)
 	}
 	if restarted.Load() != 1 {
@@ -487,4 +489,174 @@ func TestUpdaterRejectsNonGitHubURL(t *testing.T) {
 	waitUntil(t, func() bool { return checks.Load() == 1 })
 	cancel()
 	<-done
+}
+
+// ---- update restart loop (final review I1) ----
+
+func TestUpdaterMarksPendingBeforeRestart(t *testing.T) {
+	var order []string
+	var mu sync.Mutex
+	rec := func(s string) { mu.Lock(); order = append(order, s); mu.Unlock() }
+	u := &Updater{
+		Current: "1.0.0",
+		Latest: func(ctx context.Context) (string, string, error) {
+			return "helper-v1.1.0", "https://github.com/friessssss/website-v2-fries/releases/download/helper-v1.1.0/RLGoalTracker.exe", nil
+		},
+		Download:    func(ctx context.Context, url, dest string) error { return nil },
+		Idle:        func() bool { return true },
+		MarkPending: func(v string) { rec("pending " + v) },
+		Restart:     func() { rec("restart") },
+		Logf:        nolog,
+		Sleep:       func(context.Context, time.Duration) error { return nil },
+	}
+	u.Loop(context.Background())
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(order, []string{"pending helper-v1.1.0", "restart"}) {
+		t.Fatal(order)
+	}
+}
+
+func TestUpdaterSkipsVersionButTakesNewer(t *testing.T) {
+	ticks := make(chan struct{})
+	var mu sync.Mutex
+	var sleeps []time.Duration
+	var checks atomic.Int32
+	var downloads atomic.Int32
+	restarted := make(chan struct{})
+	u := &Updater{
+		Current: "1.0.0",
+		Latest: func(ctx context.Context) (string, string, error) {
+			v := "helper-v1.1.0"
+			if checks.Add(1) > 1 {
+				v = "helper-v1.2.0"
+			}
+			return v, "https://github.com/friessssss/website-v2-fries/releases/download/" + v + "/RLGoalTracker.exe", nil
+		},
+		Skip:     func(v string) bool { return v == "helper-v1.1.0" },
+		Download: func(ctx context.Context, url, dest string) error { downloads.Add(1); return nil },
+		Idle:     func() bool { return true },
+		Restart:  func() { close(restarted) },
+		Logf:     nolog,
+		Sleep:    tickSleep(ticks, &sleeps, &mu),
+	}
+	go u.Loop(context.Background())
+	waitUntil(t, func() bool { return checks.Load() == 1 })
+	if downloads.Load() != 0 {
+		t.Fatal("skipped version was downloaded")
+	}
+	ticks <- struct{}{}
+	<-restarted
+	if downloads.Load() != 1 {
+		t.Fatal("newer version not downloaded")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if sleeps[0] != UpdateEvery {
+		t.Fatal(sleeps)
+	}
+}
+
+func TestResolvePendingUpdate(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	// The swap took: the pending marker is cleared and nothing is skipped.
+	s := Settings{PendingUpdate: "helper-v1.1.0"}
+	ResolvePendingUpdate(&s, "1.1.0", now, nolog)
+	if s.PendingUpdate != "" || s.SkipUpdate != "" {
+		t.Fatalf("installed: %+v", s)
+	}
+	// Still on the old version: skip it for 12 h.
+	s = Settings{PendingUpdate: "helper-v1.1.0"}
+	ResolvePendingUpdate(&s, "1.0.0", now, nolog)
+	if s.PendingUpdate != "" || s.SkipUpdate != "helper-v1.1.0" || !s.SkipUntil.Equal(now.Add(UpdateEvery)) {
+		t.Fatalf("not installed: %+v", s)
+	}
+	if !s.SkipsUpdate("helper-v1.1.0", now.Add(time.Hour)) {
+		t.Fatal("must skip within 12 h")
+	}
+	if !s.SkipsUpdate("v1.1.0", now.Add(time.Hour)) {
+		t.Fatal("version spelling must not matter")
+	}
+	if s.SkipsUpdate("helper-v1.1.0", now.Add(UpdateEvery+time.Second)) {
+		t.Fatal("must retry after 12 h")
+	}
+	if s.SkipsUpdate("helper-v1.2.0", now.Add(time.Hour)) {
+		t.Fatal("a newer version is never skipped")
+	}
+	// No marker: nothing changes.
+	s = Settings{SkipUpdate: "helper-v1.1.0", SkipUntil: now}
+	ResolvePendingUpdate(&s, "1.0.0", now, nolog)
+	if s.SkipUpdate != "helper-v1.1.0" {
+		t.Fatalf("no marker: %+v", s)
+	}
+}
+
+func TestSettingsPausedAndUpdateFieldsPersist(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	until := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	st := OpenSettings(p)
+	if err := st.Update(func(s *Settings) {
+		s.Paused = true
+		s.PendingUpdate = "helper-v1.1.0"
+		s.SkipUpdate = "helper-v1.0.5"
+		s.SkipUntil = until
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := OpenSettings(p).Get()
+	if !got.Paused || got.PendingUpdate != "helper-v1.1.0" || got.SkipUpdate != "helper-v1.0.5" || !got.SkipUntil.Equal(until) || !got.Toasts {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// ---- paused survives restarts (final review I2) ----
+
+func TestControllerPersistsPause(t *testing.T) {
+	c, _, a, _ := newCtl(&fakeDialogs{}, &fakeSite{})
+	var saved []bool
+	var mu sync.Mutex
+	c.SavePaused = func(p bool) { mu.Lock(); saved = append(saved, p); mu.Unlock() }
+	c.TogglePause()
+	c.TogglePause()
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(saved, []bool{true, false}) || a.pauses.Load() != 1 {
+		t.Fatal(saved, a.pauses.Load())
+	}
+}
+
+func TestControllerRestorePausedThenToggleResumes(t *testing.T) {
+	c, _, a, _ := newCtl(&fakeDialogs{}, &fakeSite{})
+	var saved []bool
+	c.SavePaused = func(p bool) { saved = append(saved, p) }
+	c.RestorePaused(true)
+	if a.pauses.Load() != 1 || len(saved) != 0 {
+		t.Fatal("restore must pause without re-saving", a.pauses.Load(), saved)
+	}
+	c.TogglePause()
+	if a.resumes.Load() != 1 || !reflect.DeepEqual(saved, []bool{false}) {
+		t.Fatal("toggle after restore must resume", a.resumes.Load(), saved)
+	}
+}
+
+func TestControllerRepairClearsSavedPause(t *testing.T) {
+	site := &fakeSite{fakePairer: fakePairer{key: "newkey"}}
+	c, _, _, _ := newCtl(&fakeDialogs{codes: []string{"ABC123"}}, site)
+	var saved []bool
+	c.SavePaused = func(p bool) { saved = append(saved, p) }
+	c.RestorePaused(true)
+	c.Repair(context.Background())
+	if !reflect.DeepEqual(saved, []bool{false}) {
+		t.Fatal(saved)
+	}
+}
+
+func TestSettingsStoreForget(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	st := OpenSettings(p)
+	st.Once("k")
+	st.Forget("k")
+	if !OpenSettings(p).Once("k") {
+		t.Fatal("forgotten key must be new again after reload")
+	}
 }

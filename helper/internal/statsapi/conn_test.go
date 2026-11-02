@@ -304,3 +304,36 @@ func TestDialNonJSONFirstByteSwitchesToWebSocket(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Leading whitespace or a UTF-8 BOM before the first object is still raw
+// JSON, not a reason to give up on the port (final review minor).
+func TestDialTCPSkipsLeadingWhitespaceAndBOM(t *testing.T) {
+	for _, prefix := range []string{" \r\n\t", "\xEF\xBB\xBF", "\xEF\xBB\xBF\n "} {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Write([]byte(prefix))
+			time.Sleep(20 * time.Millisecond) // the prefix may arrive alone
+			c.Write([]byte(`{"Event":"A","Data":"{}"}`))
+			c.Close()
+		}()
+		ctx := context.Background()
+		s, err := Dial(ctx, "127.0.0.1", []int{portOf(t, ln.Addr().String())})
+		if err != nil {
+			ln.Close()
+			t.Fatalf("prefix %q: %v", prefix, err)
+		}
+		got := collect(t, ctx, func(ctx context.Context) (string, error) { r, err := s.Next(ctx); return string(r), err })
+		s.(io.Closer).Close()
+		ln.Close()
+		if len(got) != 1 || !strings.Contains(got[0], `"A"`) {
+			t.Fatalf("prefix %q: got %q", prefix, got)
+		}
+	}
+}

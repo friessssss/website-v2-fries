@@ -92,6 +92,10 @@ func TestReplayRefusesProductionBaseURL(t *testing.T) {
 		{"http://localhost:3000", false},
 		{baseURL, true}, // passed, but it is the compiled site
 		{baseURL + "/", true},
+		{"https://zachrobertson.co", true}, // any spelling of the live site
+		{"https://www.zachrobertson.co/", true},
+		{"http://WWW.ZachRobertson.co:443/api", true},
+		{"https://zachrobertson.co.", true},
 	} {
 		called := stubReplay(t, "k")
 		if code := runReplay(c.base, c.explicit, "testdata/match-tcp.bin"); code != 1 || *called {

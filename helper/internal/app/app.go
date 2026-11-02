@@ -48,6 +48,11 @@ const (
 	HeartbeatEvery = 30 * time.Second
 	BackoffMax     = 60 * time.Second
 	BatchSize      = 50
+	// A rejected event is held at the queue head and retried with backoff
+	// (a site fault can answer 400 to everything). A held head event is dropped once it has been rejected on its own
+	// MaxRejectAttempts times, or continuously for MaxRejectHold.
+	MaxRejectAttempts = 10
+	MaxRejectHold     = 6 * time.Hour
 )
 
 // Stream is one live connection to the Stats API.
@@ -394,6 +399,24 @@ func (a *App) heartbeat(ctx context.Context) {
 func (a *App) flusher(ctx context.Context) {
 	backoff := FlushEvery
 	singles := 0 // events at the queue front still to be sent one at a time
+	// The head event currently held after a 400/422, how often it was
+	// rejected on its own, and since when.
+	var holdKey string
+	var holdAttempts int
+	var holdSince time.Time
+	resetHold := func() { holdKey, holdAttempts, holdSince = "", 0, time.Time{} }
+	// retryLater marks the upload as failing and sleeps the current backoff.
+	retryLater := func() bool {
+		a.mu.Lock()
+		a.lastFailed = true
+		a.mu.Unlock()
+		a.update()
+		wait := backoff
+		if backoff *= 2; backoff > BackoffMax {
+			backoff = BackoffMax
+		}
+		return a.d.Sleep(ctx, wait) == nil
+	}
 	for {
 		act, ok := a.waitFlushable(ctx)
 		if !ok {
@@ -413,15 +436,22 @@ func (a *App) flusher(ctx context.Context) {
 			continue
 		}
 		results, err := a.d.Poster.PostEvents(act, batch, a.d.Now())
+		var rej api.ErrRejected
 		switch {
 		case err == nil:
+			resetHold()
+			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
+				// The batch would be re-sent (the site dedupes); don't spin.
+				a.d.Logf("queue drop failed: %v", derr)
+				if !retryLater() {
+					return
+				}
+				continue
+			}
 			backoff = FlushEvery
 			a.mu.Lock()
 			a.lastFailed = false
 			a.mu.Unlock()
-			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
-				a.d.Logf("queue drop failed: %v", derr)
-			}
 			singles = max(singles-len(batch), 0)
 			a.notifyGoals(batch, results)
 			a.update()
@@ -441,37 +471,50 @@ func (a *App) flusher(ctx context.Context) {
 			a.mu.Unlock()
 			a.d.Logf("upload unauthorized: pairing required")
 			a.update()
-		default:
-			var rej api.ErrRejected
-			if errors.As(err, &rej) {
-				if len(batch) > 1 {
-					// One bad event must not discard the good ones: resend individually.
-					a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
-					singles = len(batch)
-					continue
+		case errors.As(err, &rej) && len(batch) > 1:
+			// One bad event must not discard the good ones: resend individually.
+			a.d.Logf("batch of %d rejected (%v); resending one at a time", len(batch), err)
+			singles = len(batch)
+		case errors.As(err, &rej):
+			now := a.d.Now()
+			if k := eventKey(batch[0]); k != holdKey {
+				holdKey, holdAttempts, holdSince = k, 0, now
+			}
+			holdAttempts++
+			if holdAttempts < MaxRejectAttempts && now.Sub(holdSince) < MaxRejectHold {
+				a.d.Logf("event rejected by the site (attempt %d): %v; keeping it and backing off", holdAttempts, err)
+				if !retryLater() {
+					return
 				}
-				a.d.Logf("dropping event rejected by the site: %v", err)
-				singles = max(singles-1, 0)
-				if derr := a.d.Queue.Drop(len(batch)); derr != nil {
-					a.d.Logf("queue drop failed: %v", derr)
-				}
-				a.update()
 				continue
 			}
-			// ErrRetryable or anything unclassified.
-			a.mu.Lock()
-			a.lastFailed = true
-			a.mu.Unlock()
-			a.update()
-			wait := backoff
-			if backoff *= 2; backoff > BackoffMax {
-				backoff = BackoffMax
+			a.d.Logf("dropping event rejected by the site %d times over %v: %v", holdAttempts, now.Sub(holdSince).Round(time.Second), err)
+			if derr := a.d.Queue.Drop(len(batch)); derr != nil {
+				a.d.Logf("queue drop failed: %v", derr)
+				if !retryLater() {
+					return
+				}
+				continue
 			}
-			if a.d.Sleep(ctx, wait) != nil {
+			resetHold()
+			singles = max(singles-1, 0)
+			a.update()
+		default:
+			// ErrRetryable or anything unclassified.
+			if !retryLater() {
 				return
 			}
 		}
 	}
+}
+
+// eventKey identifies a queued event (its JSON form).
+func eventKey(e model.Event) string {
+	b, err := json.Marshal(e)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func (a *App) notifyGoals(batch []model.Event, results []api.Result) {
@@ -490,6 +533,15 @@ func (a *App) notifyGoals(batch []model.Event, results []api.Result) {
 		}
 		a.d.OnGoal(r.ActorDisplay, r.Song)
 	}
+}
+
+// InMatch reports whether the current Stats API connection is inside a
+// match (from match_start until the match ends or the connection drops).
+// Safe to call from any goroutine.
+func (a *App) InMatch() bool {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	return a.src != nil && a.src.InMatch()
 }
 
 // currentState returns the last computed state.

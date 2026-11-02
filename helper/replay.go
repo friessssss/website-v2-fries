@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,13 +40,26 @@ func (s *eofStream) Close() error {
 	return s.Stream.(io.Closer).Close()
 }
 
+// liveHosts are the production site's hosts; replays never go there.
+var liveHosts = map[string]bool{"zachrobertson.co": true, "www.zachrobertson.co": true}
+
+// isLiveSite compares by host, so any scheme, port, path, case or trailing
+// dot of the live site is refused. An unparseable URL counts as live.
+func isLiveSite(base string) bool {
+	u, err := neturl.Parse(base)
+	if err != nil {
+		return true
+	}
+	return liveHosts[strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")]
+}
+
 // runReplay feeds a capture file through the normal parser, queue and
 // uploader (with the stored API key) against base, then exits once the queue
 // has drained. It uses its own temporary queue, not the live one. baseSet
 // says whether --base-url was passed: replays never go to the real site.
 func runReplay(base string, baseSet bool, path string) int {
 	logf := func(format string, args ...any) { fmt.Fprintf(os.Stderr, "replay: "+format+"\n", args...) }
-	if !baseSet || strings.TrimRight(base, "/") == strings.TrimRight(baseURL, "/") {
+	if !baseSet || isLiveSite(base) || strings.TrimRight(base, "/") == strings.TrimRight(baseURL, "/") {
 		logf("refusing to replay into %s: pass --base-url with a test server (not the live site)", base)
 		return 1
 	}

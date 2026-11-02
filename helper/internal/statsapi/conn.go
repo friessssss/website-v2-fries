@@ -120,10 +120,10 @@ func dialTCP(ctx context.Context, addr string) (*stream, error) {
 	}
 	c.SetReadDeadline(time.Now().Add(sniffTimeout))
 	br := bufio.NewReader(c)
-	first, err := br.Peek(1)
+	first, err := peekFirst(br)
 	var ne net.Error
 	switch {
-	case err == nil && first[0] == '{':
+	case err == nil && first == '{':
 	case err != nil && errors.As(err, &ne) && ne.Timeout():
 		// Silence: the proven raw TCP port, idle until a match starts.
 	default:
@@ -135,6 +135,28 @@ func dialTCP(ctx context.Context, addr string) (*stream, error) {
 	}
 	c.SetReadDeadline(time.Time{})
 	return connStream(c, br), nil
+}
+
+// peekFirst skips leading JSON whitespace and UTF-8 BOMs (which the JSON
+// decoder would reject) and peeks the first meaningful byte.
+func peekFirst(br *bufio.Reader) (byte, error) {
+	for {
+		b, err := br.Peek(1)
+		if err != nil {
+			return 0, err
+		}
+		switch b[0] {
+		case ' ', '\t', '\r', '\n':
+			br.Discard(1)
+			continue
+		case 0xEF:
+			if p, err := br.Peek(3); err == nil && p[1] == 0xBB && p[2] == 0xBF {
+				br.Discard(3)
+				continue
+			}
+		}
+		return b[0], nil
+	}
 }
 
 // localClient never uses a proxy: the Stats API is on this machine.

@@ -153,3 +153,61 @@ func TestPingUnauthorized(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// Only 400/422 reject an event; any other non-success status is the server's
+// problem and is retried (final review I3).
+func TestPostEventsStatusClassification(t *testing.T) {
+	for _, st := range []int{400, 422} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(st) }))
+		_, err := (&Client{BaseURL: srv.URL, Key: "k"}).PostEvents(context.Background(), nil, time.Now())
+		srv.Close()
+		var r ErrRejected
+		if !errors.As(err, &r) || r.Status != st {
+			t.Errorf("status %d: want ErrRejected, got %v", st, err)
+		}
+	}
+	for _, st := range []int{403, 404, 405, 408, 409, 413, 418, 500, 502} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(st) }))
+		_, err := (&Client{BaseURL: srv.URL, Key: "k"}).PostEvents(context.Background(), nil, time.Now())
+		srv.Close()
+		if !errors.Is(err, ErrRetryable) {
+			t.Errorf("status %d: want ErrRetryable, got %v", st, err)
+		}
+	}
+}
+
+// A redirect must never turn the POST into a GET (final review minor).
+func TestPostEventsRefusesRedirect(t *testing.T) {
+	var gets int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			gets++
+			w.Write([]byte(`{"results":[]}`))
+			return
+		}
+		http.Redirect(w, r, "/elsewhere", http.StatusMovedPermanently)
+	}))
+	defer srv.Close()
+	_, err := (&Client{BaseURL: srv.URL, Key: "k"}).PostEvents(context.Background(), nil, time.Now())
+	if !errors.Is(err, ErrRetryable) {
+		t.Fatalf("want ErrRetryable, got %v", err)
+	}
+	if gets != 0 {
+		t.Fatalf("redirect was followed as GET %d times", gets)
+	}
+	// Ping is a POST too.
+	if err := (&Client{BaseURL: srv.URL, Key: "k"}).Ping(context.Background()); !errors.Is(err, ErrRetryable) || gets != 0 {
+		t.Fatalf("ping: %v gets=%d", err, gets)
+	}
+}
+
+func TestPostEventsResultCountMismatchRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"results":[{"status":"recorded"}]}`))
+	}))
+	defer srv.Close()
+	evs := []model.Event{{Kind: "goal", MatchGUID: "g"}, {Kind: "goal", MatchGUID: "g"}}
+	if _, err := (&Client{BaseURL: srv.URL, Key: "k"}).PostEvents(context.Background(), evs, time.Now()); !errors.Is(err, ErrRetryable) {
+		t.Fatalf("got %v", err)
+	}
+}
