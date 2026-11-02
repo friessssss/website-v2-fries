@@ -56,6 +56,7 @@ describe('stats', () => {
         trackId: 'tA',
         song: 'Song A',
         artist: 'Artist A',
+        albumArt: null,
         byActor: { zach: 2, ashton: 1, opponent: 1, teammate: 1 },
         goalsFor: 4,
         goalsAgainst: 1,

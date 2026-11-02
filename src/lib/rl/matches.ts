@@ -1,6 +1,7 @@
 import type { Db } from 'mongodb';
 import { collections } from './db';
 import { currentSessionId } from './sessions';
+import { songKey } from './normalize';
 import { resolveActor } from './players';
 import type { IngestResult } from './events';
 import type { MatchDoc, PlayerDoc, Track } from './types';
@@ -80,15 +81,15 @@ export async function applyMatchStart(
   return { status: 'recorded' };
 }
 
-type SongEntry = { trackId: string | null; song: string; artist: string };
+type SongEntry = { trackId: string | null; song: string; artist: string; songKey: string };
 
-/** Matches an already-stored song: by trackId when known, else by title and artist. */
+/** Matches an already-stored song by its song key (or, for entries stored before keys, by trackId). */
 function sameSong(t: SongEntry) {
-  return t.trackId !== null ? { trackId: t.trackId } : { trackId: null, song: t.song, artist: t.artist };
+  return t.trackId !== null ? { $or: [{ songKey: t.songKey }, { trackId: t.trackId }] } : { songKey: t.songKey };
 }
 
 function songEntry(t: Track): SongEntry {
-  return { trackId: t.trackId, song: t.song, artist: t.artist };
+  return { trackId: t.trackId, song: t.song, artist: t.artist, songKey: songKey(t.song, t.artist) };
 }
 
 /** Adds the track to songs unless already there. Returns true when it was added. */

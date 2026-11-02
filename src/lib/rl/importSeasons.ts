@@ -1,6 +1,6 @@
 import { MongoBulkWriteError, type Db } from 'mongodb';
 import { collections } from './db';
-import { normalizeFirstArtist, normalizeName, normalizeSong } from './normalize';
+import { normalizeName, normalizeSong, songKey } from './normalize';
 import { listPlayers } from './players';
 import type { EventDoc } from './types';
 
@@ -70,7 +70,7 @@ async function loadKnownSongs(db: Db): Promise<Map<string, Linked>> {
     .toArray();
   const known = new Map<string, Linked>();
   for (const r of rows) {
-    const key = `${normalizeSong(r.song!)}|${normalizeFirstArtist(r.artist!)}`;
+    const key = songKey(r.song!, r.artist);
     const prev = known.get(key);
     if (!prev || (!prev.trackId && r.trackId)) {
       known.set(key, {
@@ -123,7 +123,8 @@ export async function importSeasonArchive(
     const seen = new Map<string, number>();
     let index = 0;
     for (const row of season.songs) {
-      const link = known.get(`${normalizeSong(row.song)}|${normalizeFirstArtist(row.artist)}`);
+      const key = songKey(row.song, row.artist);
+      const link = known.get(key);
       if (!link) unmatched.push({ year: season.year, song: row.song, artist: row.artist });
       const set: Partial<EventDoc> = {};
       if (link) Object.assign(set, Object.fromEntries(Object.entries(link).filter(([, v]) => v != null)));
@@ -147,6 +148,7 @@ export async function importSeasonArchive(
             type: 'goal',
             actor,
             ...track,
+            songKey: key,
             progressMs: null,
             playlist: playlist.name,
             playlistId: playlist.id,

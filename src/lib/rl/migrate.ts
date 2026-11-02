@@ -1,6 +1,6 @@
 import { MongoBulkWriteError, type Db } from 'mongodb';
 import { collections, ensureIndexes } from './db';
-import { normalizeName } from './normalize';
+import { normalizeName, songKey } from './normalize';
 import { listPlayers, seedPlayers } from './players';
 import { SESSION_GAP_MS, sessionIdFor } from './sessions';
 import type { EventDoc } from './types';
@@ -55,6 +55,7 @@ export async function migrateLegacy(db: Db): Promise<MigrateResult> {
       ...(slug ? {} : { actorInGame: g.player }),
       song: known ? g.song : null,
       artist: known ? g.artist ?? null : null,
+      ...(known && { songKey: songKey(g.song, g.artist) }),
       album: null,
       albumArt: null,
       trackId: null,

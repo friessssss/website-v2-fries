@@ -1,7 +1,7 @@
 import { ObjectId, type Db, type Filter } from 'mongodb';
 import { collections } from './db';
 import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch, inferOurTeam } from './matches';
-import { normalizeName } from './normalize';
+import { normalizeName, songKey } from './normalize';
 import { addAlias, listPlayers, resolveActor } from './players';
 import { currentSessionId, resolveSessionId } from './sessions';
 import type { Actor, Clock, EventDoc, EventType, PlayerDoc, Track } from './types';
@@ -108,6 +108,7 @@ function trackFields(track: Track | null | undefined) {
     progressMs: track?.progressMs ?? null,
     playlist: track?.playlist ?? null,
     playlistId: track?.playlistId ?? null,
+    ...(track && { songKey: songKey(track.song, track.artist) }),
   };
 }
 
@@ -332,6 +333,7 @@ export async function patchEvent(
   if (patch.song) {
     $set.song = patch.song.song;
     $set.artist = patch.song.artist;
+    $set.songKey = songKey(patch.song.song, patch.song.artist);
     $set.trackId = patch.song.trackId ?? null;
     // The old track's details no longer apply to the corrected song.
     $set.album = patch.song.album ?? null;

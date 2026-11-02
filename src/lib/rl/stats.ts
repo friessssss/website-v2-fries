@@ -3,6 +3,7 @@ import { collections } from './db';
 import { DAY_MS, WINDOW_DAYS } from './legacyAnalytics';
 import { listPlayers } from './players';
 import { currentSessionId } from './sessions';
+import { SongDisplays, type SongDisplay } from './songGroups';
 import type { Actor, EventDoc, EventType, PlayerDoc } from './types';
 
 export class NotFound extends Error {
@@ -20,6 +21,7 @@ type SongTotals = {
   trackId: string | null;
   song: string;
   artist: string;
+  albumArt: string | null;
   byActor: Record<Actor, number>;
   goalsFor: number;
   goalsAgainst: number;
@@ -31,11 +33,6 @@ const TOP_SONGS_LIMIT = 5;
 
 const zeroCounts = (): Counts => ({ goal: 0, assist: 0, save: 0, demo: 0 });
 
-/** Song identity: trackId when present, else song + artist. */
-const SONG_KEY = {
-  $ifNull: ['$trackId', { $concat: ['$song', '||', { $ifNull: ['$artist', ''] }] }],
-};
-
 export async function resolveScope(db: Db, scope: Scope, now: Date): Promise<{ filter: object; sessionId: string | null; empty: boolean }> {
   if (scope.session === 'all') return { filter: {}, sessionId: null, empty: false };
   const sessionId = scope.session === 'current' ? await currentSessionId(db, now) : scope.session;
@@ -43,39 +40,69 @@ export async function resolveScope(db: Db, scope: Scope, now: Date): Promise<{ f
   return { filter: { sessionId }, sessionId, empty: false };
 }
 
-async function songBreakdown(db: Db, filter: object, type: EventType): Promise<SongTotals[]> {
+/**
+ * Counts events with a song per song group (`songKey`) and actor. Grouping by spelling in Mongo
+ * and merging by key here keeps events the songKey backfill has not reached yet correct.
+ */
+async function songGroups(db: Db, match: object): Promise<Map<string, { display: SongDisplay; byActor: Map<Actor, number> }>> {
   const rows = await collections(db)
     .events.aggregate<{
-      _id: { key: string; actor: Actor };
-      trackId: string | null;
-      song: string;
-      artist: string;
+      _id: { songKey: string | null; song: string; artist: string | null; actor: Actor };
       count: number;
+      first: Date;
+      tracked: { at: Date; trackId: string; albumArt: string | null } | null;
     }>([
-      { $match: { ...filter, type, song: { $ne: null } } },
+      { $match: { ...match, song: { $ne: null } } },
       {
         $group: {
-          _id: { key: SONG_KEY, actor: '$actor' },
-          trackId: { $first: { $ifNull: ['$trackId', null] } },
-          song: { $first: '$song' },
-          artist: { $first: '$artist' },
+          _id: {
+            songKey: { $ifNull: ['$songKey', null] },
+            song: '$song',
+            artist: { $ifNull: ['$artist', null] },
+            actor: '$actor',
+          },
           count: { $sum: 1 },
+          first: { $min: '$occurredAt' },
+          // BSON orders null below documents, and documents by their first field (at).
+          tracked: {
+            $max: {
+              $cond: [
+                { $ne: [{ $ifNull: ['$trackId', null] }, null] },
+                { at: '$occurredAt', trackId: '$trackId', albumArt: { $ifNull: ['$albumArt', null] } },
+                null,
+              ],
+            },
+          },
         },
       },
     ])
     .toArray();
-  const byKey = new Map<string, SongTotals>();
-  for (const r of rows) {
-    let s = byKey.get(r._id.key);
-    if (!s) {
-      s = { trackId: r.trackId, song: r.song, artist: r.artist, byActor: {}, goalsFor: 0, goalsAgainst: 0 };
-      byKey.set(r._id.key, s);
-    }
-    s.byActor[r._id.actor] = r.count;
-    if (r._id.actor === 'opponent') s.goalsAgainst += r.count;
-    else s.goalsFor += r.count;
+  const displays = new SongDisplays();
+  const counts = new Map<string, Map<Actor, number>>();
+  for (const { _id, count, first, tracked } of rows) {
+    const spelling = { song: _id.song, artist: _id.artist, songKey: _id.songKey };
+    const key = displays.add({ ...spelling, at: first, count });
+    if (tracked) displays.add({ ...spelling, ...tracked, count: 0 });
+    const byActor = counts.get(key) ?? new Map<Actor, number>();
+    byActor.set(_id.actor, (byActor.get(_id.actor) ?? 0) + count);
+    counts.set(key, byActor);
   }
-  return Array.from(byKey.values()).sort(
+  return new Map(Array.from(counts, ([key, byActor]) => [key, { display: displays.get(key), byActor }]));
+}
+
+async function songBreakdown(db: Db, filter: object, type: EventType): Promise<SongTotals[]> {
+  const groups = await songGroups(db, { ...filter, type });
+  const totals: SongTotals[] = [];
+  groups.forEach(({ display, byActor }) => {
+    const s: SongTotals = { ...display, byActor: {}, goalsFor: 0, goalsAgainst: 0 };
+    byActor.forEach((n, actor) => {
+      s.byActor[actor] = n;
+      if (actor === 'opponent') s.goalsAgainst += n;
+      else s.goalsFor += n;
+    });
+    totals.push(s);
+  });
+  return totals.sort(
     (a, b) =>
       b.goalsFor + b.goalsAgainst - (a.goalsFor + a.goalsAgainst) || a.song.localeCompare(b.song),
   );
@@ -159,23 +186,14 @@ async function countByType(db: Db, actor: Actor, filter: object): Promise<Counts
 }
 
 async function topSongsFor(db: Db, actor: Actor, type: EventType) {
-  const rows = await collections(db)
-    .events.aggregate<{ song: string; artist: string; count: number }>([
-      { $match: { actor, type, song: { $ne: null } } },
-      {
-        $group: {
-          _id: SONG_KEY,
-          song: { $first: '$song' },
-          artist: { $first: '$artist' },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1, song: 1 } },
-      { $limit: TOP_SONGS_LIMIT },
-      { $project: { _id: 0, song: 1, artist: 1, count: 1 } },
-    ])
-    .toArray();
-  return rows;
+  const groups = await songGroups(db, { actor, type });
+  return Array.from(groups.values(), ({ display, byActor }) => ({
+    song: display.song,
+    artist: display.artist,
+    count: byActor.get(actor) ?? 0,
+  }))
+    .sort((a, b) => b.count - a.count || a.song.localeCompare(b.song))
+    .slice(0, TOP_SONGS_LIMIT);
 }
 
 async function topPairs(
