@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 export const GET = withErrors(async (req) => {
   const { db, now } = await getCtx();
   const params = req.nextUrl.searchParams;
+  // Per-player stats live at /players/[slug]/stats.
+  if (params.has('player')) throw new HttpError(400, 'bad_player');
   const type = parseType(params.get('type'));
   const playlist = params.get('playlist') || undefined;
   if (playlist && playlist.length > 200) throw new HttpError(400, 'bad_playlist');

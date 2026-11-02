@@ -270,6 +270,9 @@ async function askAccount(
       } catch {
         // Could not persist the status; skip this account rather than fail the pick.
       }
+    } else {
+      // Name only: messages can carry response bodies.
+      console.error('[rl] spotify lookup failed', String(account._id), e instanceof Error ? e.name : 'non-error');
     }
     return null;
   }

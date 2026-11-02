@@ -5,7 +5,7 @@ import GlyphField from '@/components/rl/GlyphField';
 import GoalButtons from '@/components/rl/GoalButtons';
 import GoalFeed from '@/components/rl/GoalFeed';
 import HelperStatus from '@/components/rl/HelperStatus';
-import type { HelperInfo } from '@/components/rl/HelperStatus';
+import type { HelperSummary } from '@/components/rl/HelperStatus';
 import Leaderboard from '@/components/rl/Leaderboard';
 import NowPlaying from '@/components/rl/NowPlaying';
 import RLNav from '@/components/rl/RLNav';
@@ -26,7 +26,7 @@ export default function RLTrackerPage() {
   const stats = usePoll<StatsResponse>(`/api/rl/v1/stats?session=${scope}`, POLL_MS);
   const events = usePoll<{ events: FeedEvent[] }>(`/api/rl/v1/events?session=${scope}&type=goal`, POLL_MS);
   const nowPlaying = usePoll<NowPlayingResponse>('/api/rl/v1/now-playing', POLL_MS);
-  const helpers = usePoll<HelperInfo[]>('/api/rl/v1/helpers', 15000);
+  const helpers = usePoll<HelperSummary>('/api/rl/v1/helpers', 15000);
   const roster = usePoll<{ players: Player[] }>('/api/rl/v1/players', 60000);
   const sessions = usePoll<{ sessions: SessionSummary[] }>('/api/rl/v1/sessions', 60000);
   const { unlocked } = useUnlocked();

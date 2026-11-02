@@ -10,6 +10,9 @@ export const GET = withErrors(async () => {
   return NextResponse.json({ players: await listPlayers(db) });
 });
 
+const SLUG = /^[a-z0-9-]+$/;
+const RESERVED = new Set(['opponent', 'teammate']);
+
 export const PUT = withErrors(async (req) => {
   requireCookie(req);
   const { db } = await getCtx();
@@ -19,12 +22,15 @@ export const PUT = withErrors(async (req) => {
     if (typeof p !== 'object' || p === null) throw new HttpError(400, 'bad_players');
     const o = p as Record<string, unknown>;
     if (!Array.isArray(o.aliases) || o.aliases.length > 50) throw new HttpError(400, 'bad_players');
+    const slug = str(o.slug, 'slug', 40);
+    if (!SLUG.test(slug) || RESERVED.has(slug)) throw new HttpError(400, 'bad_slug');
     return {
-      slug: str(o.slug, 'players', 40),
+      slug,
       displayName: str(o.displayName, 'players', 60),
       aliases: o.aliases.map((a) => str(a, 'players', 80)),
     };
   });
+  if (new Set(players.map((p) => p.slug)).size !== players.length) throw new HttpError(400, 'duplicate_slug');
   await replacePlayers(db, players);
   return NextResponse.json({ players: await listPlayers(db) });
 });

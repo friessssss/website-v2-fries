@@ -6,7 +6,6 @@ import {
   UNLOCK_MAX_AGE_S,
   cookieOptions,
   cookieUnlocked,
-  getCtx,
   limitIp,
   readJson,
   withErrors,
@@ -17,8 +16,8 @@ export const dynamic = 'force-dynamic';
 export const GET = withErrors(async (req) => NextResponse.json({ unlocked: cookieUnlocked(req) }));
 
 export const POST = withErrors(async (req) => {
-  const { now } = await getCtx();
-  limitIp(req, now);
+  // No database needed: unlock must work while Mongo is down.
+  limitIp(req, new Date());
   const body = await readJson(req);
   const passcode = process.env.RL_GROUP_PASSCODE ?? '';
   const secret = process.env.RL_COOKIE_SECRET ?? '';

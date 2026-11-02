@@ -10,9 +10,6 @@ export const SPOTIFY_SCOPES = [
   'user-read-playback-state',
   'playlist-read-private',
   'playlist-read-collaborative',
-  'user-read-private',
-  'user-read-email',
-  'user-read-playback-position',
 ];
 
 export function redirectUri(origin: string): string {

@@ -44,6 +44,9 @@ import { GET as spotifyGET } from '@/app/api/rl/v1/spotify/route';
 import { DELETE as spotifyDELETE } from '@/app/api/rl/v1/spotify/[id]/route';
 import { GET as helpersGET } from '@/app/api/rl/v1/helpers/route';
 import { GET as helperGET } from '@/app/api/rl/v1/helper/latest/route';
+import { POST as pingPOST } from '@/app/api/rl/v1/ping/route';
+import { GET as spotifyStatusGET } from '@/app/api/rl/v1/spotify/status/route';
+import { SPOTIFY_SCOPES } from '../spotify-link';
 
 const PASS = 'test-passcode';
 const SECRET = 'cookie-secret';
@@ -164,6 +167,13 @@ describe('rl v1 routes', () => {
       expect(await body(await unlockGET(req('GET', '/unlock', { cookie: COOKIE })))).toEqual({ unlocked: false });
     });
 
+    it('unlock works while Mongo is down', async () => {
+      vi.mocked(request.getCtx).mockRejectedValue(Object.assign(new Error('down'), { name: 'MongoServerSelectionError' }));
+      const ok = await unlockPOST(req('POST', '/unlock', { ip: '7.7.7.7', body: { passcode: PASS } }));
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get('set-cookie')).toContain('rl_unlock=');
+    });
+
     it('lock clears the cookie', async () => {
       const res = await lockPOST(req('POST', '/lock'));
       expect(res.status).toBe(200);
@@ -172,22 +182,40 @@ describe('rl v1 routes', () => {
   });
 
   describe('helpers (public)', () => {
-    it('lists non-revoked helper keys by label and lastUsedAt only', async () => {
-      const h1 = await createApiKey(db(), 'Zach PC', 'helper');
+    it('reports only a live count and the latest lastSeenAt, never labels or ids', async () => {
+      const h1 = await createApiKey(db(), 'ZACH@DESKTOP', 'helper');
+      const h2 = await createApiKey(db(), 'ASH@LAPTOP', 'helper');
       await createApiKey(db(), 'Revoked PC', 'helper');
-      await createApiKey(db(), 'Stream Deck', 'shortcut');
-      await collections(db()).apiKeys.updateOne({ label: 'Revoked PC' }, { $set: { revokedAt: NOW } });
-      await collections(db()).apiKeys.updateOne({ _id: h1.doc._id }, { $set: { lastUsedAt: NOW } });
+      const deck = await createApiKey(db(), 'Stream Deck', 'shortcut');
+      const { apiKeys } = collections(db());
+      await apiKeys.updateOne({ label: 'Revoked PC' }, { $set: { revokedAt: NOW, lastUsedAt: NOW } });
+      await apiKeys.updateOne({ _id: h1.doc._id }, { $set: { lastUsedAt: new Date(NOW.getTime() - 2 * 60_000) } });
+      await apiKeys.updateOne({ _id: h2.doc._id }, { $set: { lastUsedAt: new Date(NOW.getTime() - 4 * 60_000) } });
+      await apiKeys.updateOne({ _id: deck.doc._id }, { $set: { lastUsedAt: NOW } });
       const res = await helpersGET(req('GET', '/helpers'));
       expect(res.status).toBe(200);
       const text = await res.text();
-      expect(text).not.toMatch(/hash|prefix|_id|"id"/);
-      expect(JSON.parse(text)).toEqual([{ label: 'Zach PC', lastUsedAt: NOW.toISOString() }]);
+      expect(text).not.toMatch(/label|hash|prefix|_id|"id"|ZACH|ASH|DESKTOP/);
+      expect(JSON.parse(text)).toEqual({ live: 1, lastSeenAt: new Date(NOW.getTime() - 2 * 60_000).toISOString() });
     });
 
-    it('returns null lastUsedAt for an unused helper', async () => {
+    it('returns live 0 and null lastSeenAt for unused helpers', async () => {
       await createApiKey(db(), 'New PC', 'helper');
-      expect(await body(await helpersGET(req('GET', '/helpers')))).toEqual([{ label: 'New PC', lastUsedAt: null }]);
+      expect(await body(await helpersGET(req('GET', '/helpers')))).toEqual({ live: 0, lastSeenAt: null });
+    });
+  });
+
+  describe('POST /ping', () => {
+    it('requires a key, returns 204 and marks the helper live', async () => {
+      expect((await pingPOST(req('POST', '/ping'))).status).toBe(401);
+      expect((await pingPOST(req('POST', '/ping', { bearer: 'rlk_nope' }))).status).toBe(401);
+      const { key, doc } = await createApiKey(db(), 'PC', 'helper');
+      await collections(db()).apiKeys.updateOne({ _id: doc._id }, { $set: { lastUsedAt: new Date(NOW.getTime() - 30_000) } });
+      const res = await pingPOST(req('POST', '/ping', { bearer: key }));
+      expect(res.status).toBe(204);
+      expect(await res.text()).toBe('');
+      expect((await collections(db()).apiKeys.findOne({ _id: doc._id }))!.lastUsedAt).toEqual(NOW);
+      expect(await body(await helpersGET(req('GET', '/helpers')))).toEqual({ live: 1, lastSeenAt: NOW.toISOString() });
     });
   });
 
@@ -368,6 +396,20 @@ describe('rl v1 routes', () => {
       expect((await body(ok)).players.map((p: any) => p.slug)).toEqual(['a']);
       expect((await playersPUT(req('PUT', '/players', { cookie: COOKIE, body: { players: 'no' } }))).status).toBe(400);
     });
+
+    it('PUT /players rejects bad, reserved and duplicate slugs', async () => {
+      const put = async (players: unknown[]) => {
+        const res = await playersPUT(req('PUT', '/players', { cookie: COOKIE, body: { players } }));
+        return [res.status, (await body(res)).error];
+      };
+      const p = (slug: string) => ({ slug, displayName: slug.toUpperCase() + 'x', aliases: [] });
+      expect(await put([p('Bad Slug')])).toEqual([400, 'bad_slug']);
+      expect(await put([p('ok_no')])).toEqual([400, 'bad_slug']);
+      expect(await put([p('opponent')])).toEqual([400, 'bad_slug']);
+      expect(await put([p('teammate')])).toEqual([400, 'bad_slug']);
+      expect(await put([p('a-1'), { ...p('a-1'), displayName: 'Other' }])).toEqual([400, 'duplicate_slug']);
+      expect((await playersPUT(req('PUT', '/players', { cookie: COOKIE, body: { players: [p('a-1')] } }))).status).toBe(200);
+    });
   });
 
   describe('GET /unknown-names', () => {
@@ -406,6 +448,8 @@ describe('rl v1 routes', () => {
       await seedNight(db());
       expect((await statsGET(req('GET', '/stats?session=all&type=save'))).status).toBe(200);
       expect((await statsGET(req('GET', '/stats?type=nope'))).status).toBe(400);
+      const byPlayer = await statsGET(req('GET', '/stats?session=all&player=zach'));
+      expect([byPlayer.status, (await body(byPlayer)).error]).toEqual([400, 'bad_player']);
       const evs = await body(await eventsGET(req('GET', '/events?session=all&type=goal&limit=2')));
       expect(evs.events).toHaveLength(2);
       const next = await body(await eventsGET(req('GET', `/events?session=all&type=goal&limit=2&before=${evs.events[1]._id}`)));
@@ -515,7 +559,13 @@ describe('rl v1 routes', () => {
       expect(loc.searchParams.get('response_type')).toBe('code');
       expect(loc.searchParams.get('show_dialog')).toBe('true');
       expect(loc.searchParams.get('redirect_uri')).toBe('http://localhost/api/rl/v1/spotify/callback');
-      expect(loc.searchParams.get('scope')).toContain('user-read-currently-playing');
+      expect(loc.searchParams.get('scope')!.split(' ').sort()).toEqual([
+        'playlist-read-collaborative',
+        'playlist-read-private',
+        'user-read-currently-playing',
+        'user-read-playback-state',
+      ]);
+      expect(SPOTIFY_SCOPES).toHaveLength(4);
       const state = loc.searchParams.get('state')!;
       const [payload, sig] = state.split('.');
       expect(sig).toBe(hmac(SECRET, payload));
@@ -619,6 +669,20 @@ describe('rl v1 routes', () => {
       expect(accounts).toHaveLength(1);
       expect(Object.keys(accounts[0]).sort()).toEqual(['displayName', 'id', 'lastSeenPlayingAt', 'playerSlug', 'status']);
       expect(accounts[0]).toMatchObject({ playerSlug: 'ashton', displayName: 'Ashton S', status: 'ok' });
+    });
+
+    it('GET /spotify/status is public and lists only display names needing relink', async () => {
+      expect(await body(await spotifyStatusGET(req('GET', '/spotify/status')))).toEqual({ needsRelink: [], linked: 0 });
+      await link('ashton');
+      await collections(db()).spotifyAccounts.updateOne({ playerSlug: 'ashton' }, { $set: { status: 'needs_relink' } });
+      await collections(db()).spotifyAccounts.insertOne({
+        playerSlug: 'zach', spotifyUserId: 'sp-zach', displayName: 'Z', refreshTokenEnc: 'enc', status: 'ok', createdAt: NOW,
+      });
+      const res = await spotifyStatusGET(req('GET', '/spotify/status'));
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).not.toMatch(/sp-ashton|secret-|Token|_id|"id"|playerSlug/);
+      expect(JSON.parse(text)).toEqual({ needsRelink: ['Ashton'], linked: 1 });
     });
 
     it('DELETE /spotify/[id] unlinks, then 404s', async () => {

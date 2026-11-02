@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
     const playlistFilter = searchParams.get('playlistFilter');
     const db = await getDb();
     return NextResponse.json(await analyticsPayload(db, { timeFilter, playlistFilter }));
-  } catch {
+  } catch (err) {
+    const e = err instanceof Error ? err : new Error(String(err));
+    console.error('[rl] analytics failed', e.name, e.message);
     return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 });
   }
 }

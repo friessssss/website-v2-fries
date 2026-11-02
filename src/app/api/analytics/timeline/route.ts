@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
     const groupBy = searchParams.get('groupBy') || 'hour';
     const db = await getDb();
     return NextResponse.json(await timelinePayload(db, { timeFilter, playlistFilter, groupBy }));
-  } catch {
+  } catch (err) {
+    const e = err instanceof Error ? err : new Error(String(err));
+    console.error('[rl] analytics failed', e.name, e.message);
     return NextResponse.json({ error: 'Failed to fetch timeline' }, { status: 500 });
   }
 }

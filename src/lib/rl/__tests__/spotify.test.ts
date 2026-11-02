@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from 'mongodb';
 import { collections } from '../db';
 import { decryptSecret, encryptSecret } from '../crypto';
@@ -144,10 +144,15 @@ describe('spotify', () => {
   it('skips accounts with other errors without changing their status', async () => {
     await seed('a1');
     await seed('b1');
-    const { client } = fakeClient({ 'tok-a1': new Error('boom'), 'tok-b1': playing('B') });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = fakeClient({ 'tok-a1': new Error('boom tok-a1'), 'tok-b1': playing('B') });
     expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('B');
     const a1 = await collections(db).spotifyAccounts.findOne({ playerSlug: 'a1' });
     expect(a1?.status).toBe('ok');
+    // Account id and error name only: never the message (it may carry a token or response body).
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('[rl] spotify lookup failed', String(a1!._id), 'Error');
+    spy.mockRestore();
   });
 
   it('never stores the plain refresh token', async () => {

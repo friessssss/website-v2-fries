@@ -25,8 +25,8 @@ let indexesReady: Promise<void> | null = null;
 
 export async function getDb(): Promise<Db> {
   // Imported lazily: '@/lib/mongodb' throws at import time when MONGODB_URI is unset.
-  const { default: clientPromise } = await import('@/lib/mongodb');
-  const client = await clientPromise;
+  const { getMongoClient } = await import('@/lib/mongodb');
+  const client = await getMongoClient();
   const db = client.db(RL_DB_NAME);
   // Once per process, so the unique dedupe index exists even if the migration never ran.
   indexesReady ??= ensureIndexes(db);
