@@ -261,3 +261,23 @@ body {
     transition: none;
   }
 }
+
+/* New-goal highlight on the leaderboard: tint-10 fading out over 1.2 s */
+@keyframes rl-flash {
+  from {
+    background-color: var(--tint-10);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.rl-flash {
+  animation: rl-flash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-flash {
+    animation: none;
+  }
+}
