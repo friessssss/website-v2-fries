@@ -45,7 +45,14 @@ type Parser struct {
 // NewParser returns a Parser using the wall clock, as an app.Source.
 func NewParser() app.Source { return &Parser{Now: time.Now} }
 
-var _ app.Source = (*Parser)(nil)
+var (
+	_ app.Source  = (*Parser)(nil)
+	_ app.Flusher = (*Parser)(nil)
+)
+
+// Flush returns a goal still waiting for its clock reading, stamped with the
+// latest clock (the app calls it when the connection ends).
+func (p *Parser) Flush() []model.Event { return p.flushGoal(nil) }
 
 // InMatch reports whether a match_start was emitted and the match has not
 // ended or been destroyed since.

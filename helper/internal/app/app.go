@@ -62,6 +62,13 @@ type Source interface {
 	InMatch() bool
 }
 
+// Flusher is an optional Source extension: Flush returns events the Source
+// is still holding back (a goal waiting for its clock). The reader calls it
+// whenever a connection ends, so nothing buffered is lost.
+type Flusher interface {
+	Flush() []model.Event
+}
+
 // Poster uploads a batch (satisfied by *api.Client).
 type Poster interface {
 	PostEvents(ctx context.Context, events []model.Event, sentAt time.Time) ([]api.Result, error)
@@ -294,6 +301,7 @@ func (a *App) reader(ctx context.Context) {
 		a.setSource(a.d.NewSource())
 		a.setConnected(true)
 		err = a.readLoop(act, stream)
+		a.flushSource()
 		if c, ok := stream.(io.Closer); ok {
 			c.Close()
 		}
@@ -309,6 +317,20 @@ func (a *App) reader(ctx context.Context) {
 		if a.d.Sleep(ctx, DialRetry) != nil {
 			return
 		}
+	}
+}
+
+// flushSource queues whatever the current Source still buffers.
+func (a *App) flushSource() {
+	a.srcMu.Lock()
+	var evs []model.Event
+	if f, ok := a.src.(Flusher); ok {
+		evs = f.Flush()
+	}
+	a.srcMu.Unlock()
+	if len(evs) > 0 {
+		a.pushPending(evs...)
+		a.update()
 	}
 }
 

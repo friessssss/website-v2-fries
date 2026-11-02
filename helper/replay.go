@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,22 +25,19 @@ var (
 	loadKey         = winsys.LoadKey
 )
 
-// eofStream reports when the wrapped Stream reaches its end.
+// eofStream reports when the app has finished with the file: the reader
+// closes the stream only after the Source's buffered events were flushed
+// into the queue.
 type eofStream struct {
 	app.Stream
 	once sync.Once
 	done chan struct{}
 }
 
-func (s *eofStream) Next(ctx context.Context) (json.RawMessage, error) {
-	raw, err := s.Stream.Next(ctx)
-	if errors.Is(err, io.EOF) {
-		s.once.Do(func() { close(s.done) })
-	}
-	return raw, err
+func (s *eofStream) Close() error {
+	s.once.Do(func() { close(s.done) })
+	return s.Stream.(io.Closer).Close()
 }
-
-func (s *eofStream) Close() error { return s.Stream.(io.Closer).Close() }
 
 // runReplay feeds a capture file through the normal parser, queue and
 // uploader (with the stored API key) against base, then exits once the queue
@@ -111,7 +106,7 @@ func runReplay(base string, baseSet bool, path string) int {
 	stop := func() { cancel(); <-appDone }
 	timeout := time.After(replayDrainWait)
 	select {
-	case <-src.done: // Feed results are queued before the EOF is returned
+	case <-src.done: // every event, flushed ones included, is queued
 	case <-rejected:
 		stop()
 		logf("the site rejected the API key (pair the helper again)")

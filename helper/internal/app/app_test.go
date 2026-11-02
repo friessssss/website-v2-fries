@@ -654,3 +654,42 @@ func TestSetNeedsPairShowsStateAndBlocksFlushUntilResume(t *testing.T) {
 	a.Resume()
 	waitFor(t, "delivery after resume", func() bool { return len(h.poster.Delivered()) == 1 })
 }
+
+// flushSource holds an event back until Flush, like a buffered goal.
+type flushSource struct {
+	fakeSource
+	mu      sync.Mutex
+	held    []model.Event
+	flushes int
+}
+
+func (s *flushSource) Feed(raw json.RawMessage) []model.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if string(raw) == "goal" {
+		s.held = append(s.held, goalEv(7))
+	}
+	return nil
+}
+
+func (s *flushSource) Flush() []model.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.flushes++
+	out := s.held
+	s.held = nil
+	return out
+}
+
+func TestBufferedEventFlushedWhenStreamEnds(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrRetryable })
+	src := &flushSource{}
+	h.deps.NewSource = func() Source { return src }
+	h.stream.ch <- item{raw: json.RawMessage("goal")}
+	h.stream.ch <- item{err: io.EOF}
+	h.start()
+	waitFor(t, "buffered goal queued", func() bool { return h.q.Len() == 1 })
+	if got := h.q.Peek(1)[0]; got.Kind != "goal" || got.At != goalEv(7).At {
+		t.Fatalf("queued %+v", got)
+	}
+}

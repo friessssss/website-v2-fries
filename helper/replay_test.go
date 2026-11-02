@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +25,9 @@ func stubReplay(t *testing.T, key string) *bool {
 	return &called
 }
 
-func TestReplayUploadsFixture(t *testing.T) {
+// eventServer records uploaded events.
+func eventServer(t *testing.T) (*httptest.Server, func() []model.Event) {
+	t.Helper()
 	var mu sync.Mutex
 	var got []model.Event
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,16 +46,23 @@ func TestReplayUploadsFixture(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"results": res})
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv, func() []model.Event {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]model.Event(nil), got...)
+	}
+}
+
+func TestReplayUploadsFixture(t *testing.T) {
+	srv, uploaded := eventServer(t)
 	stubReplay(t, "k")
 
 	if code := runReplay(srv.URL, true, "testdata/match-tcp.bin"); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	mu.Lock()
-	defer mu.Unlock()
 	var kinds []string
-	for _, e := range got {
+	for _, e := range uploaded() {
 		kinds = append(kinds, e.Kind)
 	}
 	want := []string{"match_start", "goal", "goal", "save", "goal", "demo", "match_end"}
@@ -101,5 +113,27 @@ func TestReplayStopsOnUnauthorized(t *testing.T) {
 	}
 	if d := time.Since(start); d > 10*time.Second {
 		t.Fatalf("took %v", d)
+	}
+}
+
+func TestReplayTruncatedAfterGoalUploadsGoal(t *testing.T) {
+	b, err := os.ReadFile("testdata/match-tcp.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cut the capture right after the first live GoalScored message.
+	i := bytes.Index(b, []byte(`{"Event":"GoalScored"`))
+	j := bytes.Index(b[i+1:], []byte(`{"Event":`))
+	path := filepath.Join(t.TempDir(), "cut.bin")
+	os.WriteFile(path, b[:i+1+j], 0o644)
+
+	srv, uploaded := eventServer(t)
+	stubReplay(t, "k")
+	if code := runReplay(srv.URL, true, path); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	evs := uploaded()
+	if len(evs) != 2 || evs[0].Kind != "match_start" || evs[1].Kind != "goal" || evs[1].Scorer.Name != "OppPlayer1" {
+		t.Fatalf("uploaded %+v", evs)
 	}
 }

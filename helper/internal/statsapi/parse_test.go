@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/friessssss/website-v2-fries/helper/internal/app"
 	"github.com/friessssss/website-v2-fries/helper/internal/model"
 )
 
@@ -388,4 +389,20 @@ func TestClockUpdatedSecondsOvertime(t *testing.T) {
 	if len(evs) != 1 || *evs[0].GameTime != 7 {
 		t.Fatalf("overtime cleared: %+v", evs)
 	}
+}
+
+func TestFlushReturnsBufferedGoalOnce(t *testing.T) {
+	p := startedParser(t)
+	if evs := p.Flush(); len(evs) != 0 {
+		t.Fatalf("nothing buffered: %+v", evs)
+	}
+	p.Feed(goalScored("G", "A", 0))
+	evs := p.Flush()
+	if len(evs) != 1 || evs[0].Kind != "goal" || *evs[0].GameTime != 250 || evs[0].MatchGUID != "G" {
+		t.Fatalf("flush: %+v", evs)
+	}
+	if evs := p.Flush(); len(evs) != 0 {
+		t.Fatalf("second flush: %+v", evs)
+	}
+	var _ app.Flusher = p
 }
