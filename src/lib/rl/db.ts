@@ -67,6 +67,7 @@ export async function ensureIndexes(db: Db): Promise<void> {
     c.events.createIndex({ sessionId: 1, occurredAt: -1 }),
     c.events.createIndex({ type: 1, actor: 1 }),
     c.events.createIndex({ matchGuid: 1 }),
+    c.events.createIndex({ matchGuid: 1, type: 1, gameTime: 1 }),
     c.events.createIndex({ songKey: 1 }),
     c.matches.createIndex({ guid: 1 }, { unique: true }),
     c.apiKeys.createIndex({ hash: 1 }, { unique: true }),

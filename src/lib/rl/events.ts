@@ -40,6 +40,7 @@ export class IngestError extends Error {
 const MAX_BATCH = 50;
 const LATE_MS = 120_000;
 const MANUAL_MERGE_MS = 30_000;
+const CLOCK_SKEW_S = 1.0;
 
 export function dedupeKey(e: {
   matchGuid: string;
@@ -218,6 +219,27 @@ export async function ingestBatch(
       }),
       createdAt: receivedAt,
     };
+
+    // Two helpers' sampled game clocks can differ by a second: treat a near-identical event as a duplicate.
+    // Names are normalised in code (Mongo cannot), so only the cheap fields go in the query.
+    const actorKey = normalizeName(actorIn.name);
+    const targetKey = targetIn ? normalizeName(targetIn.name) : '';
+    const near = await events
+      .find({
+        matchGuid: e.matchGuid,
+        type,
+        gameTime: { $gte: e.gameTime - CLOCK_SKEW_S, $lte: e.gameTime + CLOCK_SKEW_S },
+      })
+      .toArray();
+    if (
+      near.some(
+        (n) =>
+          normalizeName(n.actorInGame ?? '') === actorKey && normalizeName(n.targetInGame ?? '') === targetKey,
+      )
+    ) {
+      results.push({ status: 'duplicate' });
+      continue;
+    }
 
     try {
       const { insertedId } = await events.insertOne(doc);
