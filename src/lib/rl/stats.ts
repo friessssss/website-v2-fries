@@ -35,7 +35,7 @@ const SONG_KEY = {
   $ifNull: ['$trackId', { $concat: ['$song', '||', { $ifNull: ['$artist', ''] }] }],
 };
 
-async function resolveScope(db: Db, scope: Scope, now: Date): Promise<{ filter: object; sessionId: string | null; empty: boolean }> {
+export async function resolveScope(db: Db, scope: Scope, now: Date): Promise<{ filter: object; sessionId: string | null; empty: boolean }> {
   if (scope.session === 'all') return { filter: {}, sessionId: null, empty: false };
   const sessionId = scope.session === 'current' ? await currentSessionId(db, now) : scope.session;
   if (sessionId === null) return { filter: {}, sessionId: null, empty: true };

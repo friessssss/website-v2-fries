@@ -118,3 +118,61 @@ export async function seedNight(db: Db): Promise<void> {
     },
   ]);
 }
+
+// ---- seedMatches: extra matches for win-rate / brick-wall / night-of-the-night ----
+
+export const EXTRA_SESSION_ID = '2026-10-30-1900';
+const EXTRA_START = new Date('2026-10-31T01:00:00Z');
+
+/**
+ * Call after `seedNight`. Adds 4 matches in an older session:
+ * Song A appears in all 4 (3 wins), Song X in 3 (2 wins), Song Y in 2 (excluded from win rate).
+ * Victory songs: X twice, A once. Saves with a matchGuid: zach 3 in x1 and 2 in x2 (5 in the session),
+ * sam 2 in x2 (ties his night-session total, which is older-vs-recent tie-break material).
+ */
+export async function seedMatches(db: Db): Promise<void> {
+  const c = collections(db);
+  const song = (key: 'A' | 'X' | 'Y', i: number) => {
+    const t = { A: ['tA', 'Song A', 'Artist A'], X: ['tX', 'Song X', 'Artist X'], Y: ['tY', 'Song Y', 'Artist Y'] }[key];
+    return { trackId: t[0], song: t[1], artist: t[2], firstSeenAt: new Date(EXTRA_START.getTime() + i * 60_000) };
+  };
+  const at = (min: number) => new Date(EXTRA_START.getTime() + min * 60_000);
+  const m = (
+    n: number, result: 'win' | 'loss', songs: Array<'A' | 'X' | 'Y'>, victory?: 'A' | 'X',
+  ) => ({
+    guid: `x${n}`,
+    sessionId: EXTRA_SESSION_ID,
+    startedAt: at(n * 10),
+    endedAt: at(n * 10 + 5),
+    ourTeam: 0 as const,
+    ourScore: result === 'win' ? 3 : 1,
+    theirScore: result === 'win' ? 1 : 3,
+    result,
+    songs: songs.map((s, i) => song(s, n * 10 + i)),
+    ...(victory ? { victorySong: { trackId: `t${victory}`, song: `Song ${victory}`, artist: `Artist ${victory}` } } : {}),
+  });
+  await c.matches.insertMany([
+    m(1, 'win', ['A', 'X', 'Y'], 'X'),
+    m(2, 'win', ['A', 'X', 'Y'], 'X'),
+    m(3, 'loss', ['A', 'X']),
+    m(4, 'win', ['A'], 'A'),
+  ]);
+  const save = (actor: string, guid: string, min: number) => ({
+    type: 'save' as const,
+    actor,
+    matchGuid: guid,
+    song: 'Song A',
+    artist: 'Artist A',
+    trackId: 'tA',
+    songResolved: true,
+    occurredAt: at(min),
+    sessionId: EXTRA_SESSION_ID,
+    source: 'helper' as const,
+    createdAt: at(min),
+  });
+  await c.events.insertMany([
+    save('zach', 'x1', 11), save('zach', 'x1', 12), save('zach', 'x1', 13),
+    save('zach', 'x2', 21), save('zach', 'x2', 22),
+    save('sam', 'x2', 23), save('sam', 'x2', 24),
+  ]);
+}
