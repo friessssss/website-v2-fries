@@ -34,7 +34,9 @@ export async function getDb(): Promise<Db> {
   indexesReady ??= ensureIndexes(db).then(() =>
     // Best effort: a failed backfill must not take the API down; the next cold start retries.
     ensureSongKeys(db).then(
-      () => undefined,
+      () => {
+        startSongArtBackfill(db);
+      },
       (err: unknown) => console.error('rl: songKey backfill failed:', err instanceof Error ? err.message : err),
     ),
   );
@@ -45,6 +47,17 @@ export async function getDb(): Promise<Db> {
     throw err;
   }
   return db;
+}
+
+/**
+ * Album art for historic songs, once per process after the songKey backfill: at most 20 Spotify
+ * lookups (see backfillSongArt), in the background so a cold start never waits on Spotify.
+ */
+function startSongArtBackfill(db: Db): void {
+  // Imported lazily: songMeta imports this module.
+  void import('./songMeta')
+    .then(({ backfillSongArt, songMetaConfigured }) => (songMetaConfigured() ? backfillSongArt(db) : undefined))
+    .catch((err: unknown) => console.error('rl: song art backfill failed:', err instanceof Error ? err.message : err));
 }
 
 export function collections(db: Db) {

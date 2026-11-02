@@ -149,3 +149,71 @@ export async function resolveSongMeta(
     clearTimeout(timer);
   }
 }
+
+// ---- art backfill for historic songs ----
+
+const BACKFILL_LIMIT = 20;
+
+/**
+ * Finds Spotify metadata for stored songs that never had a track id (legacy, imported, or reported
+ * by the helper while search failed) and sets album, albumArt and trackId on their events that lack
+ * a trackId. Song groups (by songKey) that already have a tracked event are skipped (the display uses
+ * that one), as are songs whose miss is still cached. Most-played first, at most `limit` lookups per
+ * run. Idempotent; only these three fields are written, so spellings and song keys never change.
+ */
+export async function backfillSongArt(
+  db: Db,
+  {
+    limit = BACKFILL_LIMIT,
+    now = new Date(),
+    lookup = (title: string, artist: string) => resolveSongMeta(db, title, artist, { now }),
+  }: { limit?: number; now?: Date; lookup?: (title: string, artist: string) => Promise<SongMeta | null> } = {},
+): Promise<{ lookups: number; updated: number }> {
+  const c = collections(db);
+  const groups = await c.events
+    .aggregate<{ _id: string; song: string; artist: string | null; count: number }>([
+      { $match: { songKey: { $type: 'string' }, song: { $type: 'string' } } },
+      {
+        $group: {
+          _id: '$songKey',
+          song: { $first: '$song' },
+          artist: { $first: '$artist' },
+          count: { $sum: 1 },
+          tracked: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$trackId', null] }, null] }, 0, 1] } },
+        },
+      },
+      { $match: { tracked: 0 } },
+      { $sort: { count: -1, _id: 1 } },
+    ])
+    .toArray();
+  if (groups.length === 0) return { lookups: 0, updated: 0 };
+
+  const missed = new Set(
+    (
+      await c.songMeta
+        .find({ _id: { $in: groups.map((g) => g._id) }, meta: null, expiresAt: { $gt: now } }, { projection: { _id: 1 } })
+        .toArray()
+    ).map((d) => d._id),
+  );
+
+  let lookups = 0;
+  let updated = 0;
+  for (const g of groups) {
+    if (lookups >= limit) break;
+    if (missed.has(g._id)) continue;
+    lookups++;
+    let meta: SongMeta | null = null;
+    try {
+      meta = await lookup(g.song, g.artist ?? '');
+    } catch {
+      meta = null;
+    }
+    if (!meta) continue;
+    const res = await c.events.updateMany(
+      { songKey: g._id, trackId: null },
+      { $set: { trackId: meta.trackId, album: meta.album, albumArt: meta.albumArt } },
+    );
+    updated += res.modifiedCount;
+  }
+  return { lookups, updated };
+}
