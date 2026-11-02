@@ -3,6 +3,10 @@ name: helper-release
 on:
   push:
     tags: ['helper-v*']
+    branches: [main]
+    paths:
+      - 'helper/**'
+      - '.github/workflows/helper-release.yml'
   pull_request:
     paths:
       - 'helper/**'
@@ -61,6 +65,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2.2.2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             helper/RLGoalTracker.exe
             helper/RLGoalTracker.exe.sha256
