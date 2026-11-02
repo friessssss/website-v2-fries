@@ -34,8 +34,15 @@ func First(readers ...Reader) Reader {
 // idleTitles are the Spotify window titles shown while paused or idle.
 var idleTitles = map[string]bool{"spotify": true, "spotify premium": true, "spotify free": true}
 
+// isAd reports a Spotify advertisement (or a bare "Spotify" placeholder)
+// rather than a track.
+func isAd(artist, title string) bool {
+	a, t := strings.ToLower(strings.TrimSpace(artist)), strings.ToLower(strings.TrimSpace(title))
+	return t == "advertisement" || t == "spotify" || ((a == "spotify" || a == "") && t == "advertisement")
+}
+
 // ParseWindowTitle reads a Spotify window title. "Artist - Title" means a
-// track is playing; it is split on the FIRST " - " because artist names
+// track is playing (unless it is an ad); it is split on the FIRST " - " because artist names
 // rarely contain it while titles ("Song - Remastered 2011") often do.
 func ParseWindowTitle(s string) (artist, title string, ok bool) {
 	s = strings.TrimSpace(s)
@@ -44,7 +51,7 @@ func ParseWindowTitle(s string) (artist, title string, ok bool) {
 	}
 	a, t, found := strings.Cut(s, " - ")
 	a, t = strings.TrimSpace(a), strings.TrimSpace(t)
-	if !found || a == "" || t == "" {
+	if !found || a == "" || t == "" || isAd(a, t) {
 		return "", "", false
 	}
 	return a, t, true
@@ -74,7 +81,7 @@ func (s *Session) isSpotify() bool {
 }
 
 func (s *Session) song() (string, string, bool) {
-	if s == nil || !s.Playing || strings.TrimSpace(s.Title) == "" {
+	if s == nil || !s.Playing || strings.TrimSpace(s.Title) == "" || isAd(s.Artist, s.Title) {
 		return "", "", false
 	}
 	return s.Title, s.Artist, true

@@ -48,6 +48,9 @@ const (
 	HeartbeatEvery = 30 * time.Second
 	BackoffMax     = 60 * time.Second
 	BatchSize      = 50
+	// SongWarmEvery is how often Deps.Song is read in the background during
+	// a match, so a goal's reading is at most a second or two old.
+	SongWarmEvery = time.Second
 	// A rejected event is held at the queue head and retried with backoff
 	// (a site fault can answer 400 to everything). A held head event is dropped once it has been rejected on its own
 	// MaxRejectAttempts times, or continuously for MaxRejectHold.
@@ -100,7 +103,8 @@ type Deps struct {
 	OnGoal    func(display, song string)
 	Logf      func(format string, args ...any)
 	// Song returns the track playing on this PC (nil when none); it is
-	// stamped on heartbeats.
+	// stamped on heartbeats and read every SongWarmEvery during a match to
+	// keep its cache warm.
 	Song func() *model.Song
 }
 
@@ -163,7 +167,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.mu.Unlock()
 
 	var wg sync.WaitGroup
-	for _, f := range []func(context.Context){a.reader, a.heartbeat, a.flusher} {
+	for _, f := range []func(context.Context){a.reader, a.heartbeat, a.flusher, a.songWarmer} {
 		wg.Add(1)
 		go func(f func(context.Context)) { defer wg.Done(); f(ctx) }(f)
 	}
@@ -399,6 +403,22 @@ func (a *App) heartbeat(ctx context.Context) {
 			hb.Song = a.d.Song()
 		}
 		a.pushPending(hb)
+	}
+}
+
+// songWarmer reads Deps.Song every SongWarmEvery while in a match, so the
+// parser's reads hit a fresh cache instead of waiting on the OS.
+func (a *App) songWarmer(ctx context.Context) {
+	if a.d.Song == nil {
+		return
+	}
+	for {
+		if a.d.Sleep(ctx, SongWarmEvery) != nil {
+			return
+		}
+		if a.InMatch() {
+			a.d.Song()
+		}
 	}
 }
 

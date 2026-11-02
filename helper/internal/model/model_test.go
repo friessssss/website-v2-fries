@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -74,5 +75,26 @@ func TestLocalSong(t *testing.T) {
 	s = LocalSong(strings.Repeat("a", 199)+" b", "x")
 	if s.Title != strings.Repeat("a", 199) {
 		t.Fatalf("cap then trim: %q", s.Title)
+	}
+}
+
+// utf16Len is the length JavaScript's String.length reports.
+func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }
+
+func TestLocalSongCapsAtUTF16CodeUnits(t *testing.T) {
+	// Each emoji is 2 UTF-16 code units: 150 emoji = 300 units, capped to 100 emoji.
+	s := LocalSong(strings.Repeat("😀", 150), strings.Repeat("😀", 150))
+	if utf16Len(s.Title) != 200 || utf16Len(s.Artist) != 200 || utf8.RuneCountInString(s.Title) != 100 {
+		t.Fatalf("emoji cap: %d units, %d runes", utf16Len(s.Title), utf8.RuneCountInString(s.Title))
+	}
+	// A surrogate pair is never split: 199 units + an emoji does not fit.
+	s = LocalSong(strings.Repeat("a", 199)+"😀", "x")
+	if s.Title != strings.Repeat("a", 199) || !utf8.ValidString(s.Title) {
+		t.Fatalf("pair split: %q", s.Title)
+	}
+	// Exactly 200 units is kept as is.
+	in := strings.Repeat("a", 198) + "😀"
+	if s = LocalSong(in, ""); s.Title != in {
+		t.Fatalf("200 units trimmed: %q", s.Title)
 	}
 }

@@ -30,6 +30,13 @@ func TestParseWindowTitle(t *testing.T) {
 		{"Artist-Title", "", "", false}, // no spaced dash
 		{" - Title", "", "", false},
 		{"Artist - ", "", "", false},
+		// Spotify ads.
+		{"Advertisement", "", "", false},
+		{"Spotify - Advertisement", "", "", false},
+		{"spotify - advertisement", "", "", false},
+		{"Spotify - Spotify", "", "", false},
+		{"Somebrand - Advertisement", "", "", false},
+		{"Artist - Spotify", "", "", false},
 	}
 	for _, c := range cases {
 		a, ti, ok := ParseWindowTitle(c.in)
@@ -79,6 +86,10 @@ func TestPickSession(t *testing.T) {
 		{"nothing playing", &pausedBrowser, []Session{pausedSpotify, pausedBrowser}, "", "", false},
 		{"no sessions", nil, nil, "", "", false},
 		{"playing spotify but no title", &Session{AppID: "Spotify.exe", Playing: true}, nil, "", "", false},
+		{"spotify ad", nil, []Session{{AppID: "Spotify.exe", Playing: true, Title: "Advertisement", Artist: "Spotify"}}, "", "", false},
+		{"spotify ad, blank artist", nil, []Session{{AppID: "Spotify.exe", Playing: true, Title: " advertisement ", Artist: ""}}, "", "", false},
+		{"spotify title only", nil, []Session{{AppID: "Spotify.exe", Playing: true, Title: "Spotify", Artist: ""}}, "", "", false},
+		{"ad on current, song on other spotify session", &Session{AppID: "Spotify.exe", Playing: true, Title: "Advertisement"}, []Session{{AppID: "SpotifyAB.SpotifyMusic!Spotify", Playing: true, Title: "Uprising", Artist: "Muse"}}, "Uprising", "Muse", true},
 		{"case-insensitive app id", nil, []Session{{AppID: "SPOTIFY.EXE", Playing: true, Title: "T", Artist: "A"}}, "T", "A", true},
 		{"other playing session that is not current is ignored", &pausedBrowser, []Session{pausedBrowser, {AppID: "vlc", Playing: true, Title: "t"}}, "", "", false},
 	}
