@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "rl:migrate": "tsx scripts/rl-migrate.ts",
+    "rl:seed": "tsx scripts/rl-dev-seed.ts"
   },
   "dependencies": {
     "@react-three/drei": "^9.105.5",
@@ -32,8 +35,11 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.3",
+    "mongodb-memory-server": "^10.4.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^2.1.9"
   }
 }
