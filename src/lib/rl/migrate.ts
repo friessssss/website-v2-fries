@@ -5,8 +5,18 @@ import { listPlayers, seedPlayers } from './players';
 import { SESSION_GAP_MS, sessionIdFor } from './sessions';
 import type { EventDoc } from './types';
 
+export interface MigrateResult {
+  copied: number;
+  /** Valid goals that already existed in `events` (re-run). */
+  skipped: number;
+  /** Legacy `_id`s (hex) not copied: unparseable timestamp or missing/non-string player. */
+  invalid: string[];
+  /** Legacy player names that fell back to `opponent` (excluding "Opponent" itself). */
+  unmappedNames: Array<{ name: string; count: number }>;
+}
+
 /** Copies legacy `goals` into `events` (same `_id`, safe to re-run). `goals` is never modified. */
-export async function migrateLegacy(db: Db): Promise<{ copied: number; skipped: number }> {
+export async function migrateLegacy(db: Db): Promise<MigrateResult> {
   await ensureIndexes(db);
   await seedPlayers(db);
   const c = collections(db);
@@ -18,11 +28,15 @@ export async function migrateLegacy(db: Db): Promise<{ copied: number; skipped: 
   }
 
   const legacy = await c.legacyGoals.find({}).toArray();
-  const dated = legacy
-    .map((g) => ({ g, at: new Date(g.timestamp) }))
-    .filter((x) => !Number.isNaN(x.at.getTime()))
-    .sort((a, b) => a.at.getTime() - b.at.getTime() || String(a.g._id).localeCompare(String(b.g._id)));
-  const invalid = legacy.length - dated.length;
+  const invalid: string[] = [];
+  const dated: Array<{ g: (typeof legacy)[number]; at: Date }> = [];
+  for (const g of legacy) {
+    const at = new Date(g.timestamp);
+    if (typeof g.player !== 'string' || Number.isNaN(at.getTime())) invalid.push(String(g._id));
+    else dated.push({ g, at });
+  }
+  dated.sort((a, b) => a.at.getTime() - b.at.getTime() || String(a.g._id).localeCompare(String(b.g._id)));
+  const unmapped = new Map<string, number>();
 
   let sessionId = '';
   let prevAt = 0;
@@ -31,6 +45,7 @@ export async function migrateLegacy(db: Db): Promise<{ copied: number; skipped: 
     prevAt = at.getTime();
     const key = normalizeName(g.player);
     const slug = key === 'opponent' ? 'opponent' : bySlugName.get(key);
+    if (!slug && key !== 'opponent') unmapped.set(g.player, (unmapped.get(g.player) ?? 0) + 1);
     const song = g.song ?? 'Unknown';
     return {
       _id: g._id,
@@ -66,5 +81,10 @@ export async function migrateLegacy(db: Db): Promise<{ copied: number; skipped: 
       copied = err.result.insertedCount;
     }
   }
-  return { copied, skipped: docs.length - copied + invalid };
+  return {
+    copied,
+    skipped: docs.length - copied,
+    invalid,
+    unmappedNames: Array.from(unmapped).map(([name, count]) => ({ name, count })),
+  };
 }

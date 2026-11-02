@@ -31,7 +31,7 @@ describe('migrateLegacy', () => {
 
   it('copies goals into events across two sessions and is idempotent', async () => {
     const db = await seedLegacy();
-    expect(await migrateLegacy(db)).toEqual({ copied: 5, skipped: 0 });
+    expect(await migrateLegacy(db)).toMatchObject({ copied: 5, skipped: 0, invalid: [] });
     const events = await collections(db).events.find({}).sort({ occurredAt: 1 }).toArray();
     expect(events).toHaveLength(5);
     expect(new Set(events.map((e) => e.sessionId)).size).toBe(2);
@@ -41,7 +41,7 @@ describe('migrateLegacy', () => {
     expect(events[0].progressMs).toBe(1234);
     expect(events[0].playlist).toBe('Mix');
 
-    expect(await migrateLegacy(db)).toEqual({ copied: 0, skipped: 5 });
+    expect(await migrateLegacy(db)).toMatchObject({ copied: 0, skipped: 5 });
     expect(await collections(db).events.countDocuments()).toBe(5);
   });
 
@@ -55,5 +55,23 @@ describe('migrateLegacy', () => {
     expect(events[3].actorInGame).toBe('Somebody Else');
     expect(events[2].actorInGame).toBeUndefined();
     expect((await collections(db).players.countDocuments())).toBe(6);
+  });
+
+  it('reports invalid docs and unmapped names, and leaves goals untouched', async () => {
+    const db = await seedLegacy();
+    const badTime = goal('Zach', 'S', 'not-a-date');
+    const noPlayer = { ...goal('x', 'S', '2026-10-01T04:00:00Z'), player: undefined };
+    await collections(db).legacyGoals.insertMany([badTime, noPlayer] as never);
+    const before = await collections(db).legacyGoals.find({}).sort({ _id: 1 }).toArray();
+
+    const res = await migrateLegacy(db);
+    expect(res.copied).toBe(5);
+    expect(res.invalid.sort()).toEqual([String(badTime._id), String(noPlayer._id)].sort());
+    expect(res.unmappedNames).toEqual([{ name: 'Somebody Else', count: 1 }]);
+    expect(await collections(db).events.countDocuments()).toBe(5);
+
+    const after = await collections(db).legacyGoals.find({}).sort({ _id: 1 }).toArray();
+    expect(after).toHaveLength(7);
+    expect(after).toEqual(before);
   });
 });

@@ -19,7 +19,12 @@ async function main(): Promise<void> {
   const { getDb } = await import('../src/lib/rl/db');
   const { migrateLegacy } = await import('../src/lib/rl/migrate');
   const result = await migrateLegacy(await getDb());
-  console.log(`Migrated legacy goals: ${result.copied} copied, ${result.skipped} skipped.`);
+  console.log(`Copied: ${result.copied}`);
+  console.log(`Skipped (already migrated): ${result.skipped}`);
+  console.log(`Invalid (not copied): ${result.invalid.length}`);
+  for (const id of result.invalid) console.log(`  ${id}`);
+  console.log(`Unmapped player names (saved as opponent): ${result.unmappedNames.length}`);
+  for (const u of result.unmappedNames) console.log(`  ${u.name}: ${u.count}`);
   process.exit(0);
 }
 
