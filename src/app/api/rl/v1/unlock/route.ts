@@ -5,6 +5,7 @@ import {
   UNLOCK_COOKIE,
   UNLOCK_MAX_AGE_S,
   cookieOptions,
+  cookieUnlocked,
   getCtx,
   limitIp,
   readJson,
@@ -12,6 +13,8 @@ import {
 } from '@/lib/rl/request';
 
 export const dynamic = 'force-dynamic';
+
+export const GET = withErrors(async (req) => NextResponse.json({ unlocked: cookieUnlocked(req) }));
 
 export const POST = withErrors(async (req) => {
   const { now } = await getCtx();

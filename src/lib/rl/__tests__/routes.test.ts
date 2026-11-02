@@ -19,7 +19,7 @@ vi.mock('@/lib/rl/request', async (orig) => ({
   getCtx: vi.fn(),
 }));
 
-import { POST as unlockPOST } from '@/app/api/rl/v1/unlock/route';
+import { GET as unlockGET, POST as unlockPOST } from '@/app/api/rl/v1/unlock/route';
 import { POST as lockPOST } from '@/app/api/rl/v1/lock/route';
 import { GET as eventsGET, POST as eventsPOST } from '@/app/api/rl/v1/events/route';
 import { DELETE as lastDELETE } from '@/app/api/rl/v1/events/last/route';
@@ -41,6 +41,7 @@ import { GET as spotifyConnectGET } from '@/app/api/rl/v1/spotify/connect/route'
 import { GET as spotifyCallbackGET } from '@/app/api/rl/v1/spotify/callback/route';
 import { GET as spotifyGET } from '@/app/api/rl/v1/spotify/route';
 import { DELETE as spotifyDELETE } from '@/app/api/rl/v1/spotify/[id]/route';
+import { GET as helpersGET } from '@/app/api/rl/v1/helpers/route';
 import { GET as helperGET } from '@/app/api/rl/v1/helper/latest/route';
 
 const PASS = 'test-passcode';
@@ -154,10 +155,38 @@ describe('rl v1 routes', () => {
       expect((await unlockPOST(req('POST', '/unlock', { ip: '5.6.7.8', body: { passcode: PASS } }))).status).toBe(200);
     });
 
+    it('GET /unlock reports cookie state and fails closed', async () => {
+      expect(await body(await unlockGET(req('GET', '/unlock')))).toEqual({ unlocked: false });
+      expect(await body(await unlockGET(req('GET', '/unlock', { cookie: 'rl_unlock=nope' })))).toEqual({ unlocked: false });
+      expect(await body(await unlockGET(req('GET', '/unlock', { cookie: COOKIE })))).toEqual({ unlocked: true });
+      delete process.env.RL_COOKIE_SECRET;
+      expect(await body(await unlockGET(req('GET', '/unlock', { cookie: COOKIE })))).toEqual({ unlocked: false });
+    });
+
     it('lock clears the cookie', async () => {
       const res = await lockPOST(req('POST', '/lock'));
       expect(res.status).toBe(200);
       expect(res.headers.get('set-cookie')).toMatch(/rl_unlock=;|Max-Age=0/);
+    });
+  });
+
+  describe('helpers (public)', () => {
+    it('lists non-revoked helper keys by label and lastUsedAt only', async () => {
+      const h1 = await createApiKey(db(), 'Zach PC', 'helper');
+      await createApiKey(db(), 'Revoked PC', 'helper');
+      await createApiKey(db(), 'Stream Deck', 'shortcut');
+      await collections(db()).apiKeys.updateOne({ label: 'Revoked PC' }, { $set: { revokedAt: NOW } });
+      await collections(db()).apiKeys.updateOne({ _id: h1.doc._id }, { $set: { lastUsedAt: NOW } });
+      const res = await helpersGET(req('GET', '/helpers'));
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).not.toMatch(/hash|prefix|_id|"id"/);
+      expect(JSON.parse(text)).toEqual([{ label: 'Zach PC', lastUsedAt: NOW.toISOString() }]);
+    });
+
+    it('returns null lastUsedAt for an unused helper', async () => {
+      await createApiKey(db(), 'New PC', 'helper');
+      expect(await body(await helpersGET(req('GET', '/helpers')))).toEqual([{ label: 'New PC', lastUsedAt: null }]);
     });
   });
 
