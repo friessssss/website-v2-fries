@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -57,17 +58,51 @@ func Newer(current, latest string) bool {
 	return false
 }
 
-// Download fetches url into dest. It writes dest+".part" first and renames it
-// into place only after a complete, successful transfer, so a partial file is
-// never left at dest.
-func Download(ctx context.Context, url, dest string) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// AllowedURL reports whether u may serve an update: https on github.com or a
+// *.githubusercontent.com host (where release assets redirect to).
+func AllowedURL(u *url.URL) bool {
+	if u == nil || u.Scheme != "https" || u.User != nil {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	return h == "github.com" || strings.HasSuffix(h, ".githubusercontent.com")
+}
+
+// Download fetches url into dest. The URL and every redirect must pass
+// AllowedURL. It writes dest+".part" first and renames it into place only
+// after a complete, successful transfer, so a partial file is never left at
+// dest.
+func Download(ctx context.Context, rawURL, dest string) error {
+	return download(ctx, &http.Client{}, AllowedURL, rawURL, dest)
+}
+
+const maxRedirects = 10
+
+func download(ctx context.Context, base *http.Client, allow func(*url.URL) bool, rawURL, dest string) (err error) {
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	if !allow(u) {
+		return fmt.Errorf("update: download url %q not allowed", u.Redacted())
+	}
+	hc := *base
+	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("update: too many redirects")
+		}
+		if !allow(req.URL) {
+			return fmt.Errorf("update: redirect to %q not allowed", req.URL.Redacted())
+		}
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}

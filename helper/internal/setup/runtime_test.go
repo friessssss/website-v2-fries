@@ -3,10 +3,12 @@ package setup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,6 +56,7 @@ func TestSettingsDefaultAndRoundTrip(t *testing.T) {
 	}
 	s.Toasts = false
 	s.RLDir = `D:\Games\rocketleague`
+	s.Shown = map[string]bool{"welcome": true}
 	if err := SaveSettings(p, s); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +64,7 @@ func TestSettingsDefaultAndRoundTrip(t *testing.T) {
 	if !strings.Contains(string(b), `"toasts":false`) {
 		t.Fatalf("file %s", b)
 	}
-	if got := LoadSettings(p); got != s {
+	if got := LoadSettings(p); !reflect.DeepEqual(got, s) {
 		t.Fatalf("got %+v", got)
 	}
 	os.WriteFile(p, []byte(`{"rlDir":"x"}`), 0o644)
@@ -71,6 +74,33 @@ func TestSettingsDefaultAndRoundTrip(t *testing.T) {
 	os.WriteFile(p, []byte(`garbage`), 0o644)
 	if got := LoadSettings(p); !got.Toasts {
 		t.Fatal("corrupt file must give defaults")
+	}
+}
+
+func TestSettingsStoreOncePersists(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	st := OpenSettings(p)
+	if !st.Once("k") || st.Once("k") {
+		t.Fatal("once semantics")
+	}
+	if err := st.Update(func(s *Settings) { s.Toasts = false }); err != nil {
+		t.Fatal(err)
+	}
+	st2 := OpenSettings(p)
+	if st2.Once("k") {
+		t.Fatal("once key not persisted")
+	}
+	if st2.Get().Toasts {
+		t.Fatal("toasts not persisted")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) { defer wg.Done(); st2.Once(fmt.Sprint(i)) }(i)
+	}
+	wg.Wait()
+	if n := len(OpenSettings(p).Get().Shown); n != 21 {
+		t.Fatalf("shown %d", n)
 	}
 }
 
@@ -370,7 +400,7 @@ func TestUpdaterDownloadsNewerThenRestartsWhenIdle(t *testing.T) {
 	u := &Updater{
 		Current: "1.0.0",
 		Latest: func(ctx context.Context) (string, string, error) {
-			return "helper-v1.1.0", "https://example/x.exe", nil
+			return "helper-v1.1.0", "https://github.com/o/r/releases/download/helper-v1.1.0/RLGoalTracker.exe", nil
 		},
 		Download: func(ctx context.Context, url, dest string) error {
 			downloads = append(downloads, url+" -> "+dest)
@@ -388,7 +418,7 @@ func TestUpdaterDownloadsNewerThenRestartsWhenIdle(t *testing.T) {
 	idle.Store(true)
 	ticks <- struct{}{}
 	<-done
-	if len(downloads) != 1 || downloads[0] != "https://example/x.exe -> /inst/RLGoalTracker.new.exe" {
+	if len(downloads) != 1 || downloads[0] != "https://github.com/o/r/releases/download/helper-v1.1.0/RLGoalTracker.exe -> /inst/RLGoalTracker.new.exe" {
 		t.Fatal(downloads)
 	}
 	if restarted.Load() != 1 {
@@ -432,4 +462,29 @@ func TestUpdaterNotNewerChecksEvery12h(t *testing.T) {
 	if sleeps[0] != UpdateEvery || UpdateEvery != 12*time.Hour {
 		t.Fatal(sleeps)
 	}
+}
+
+func TestUpdaterRejectsNonGitHubURL(t *testing.T) {
+	ticks := make(chan struct{})
+	var mu sync.Mutex
+	var sleeps []time.Duration
+	var checks atomic.Int32
+	u := &Updater{
+		Current: "1.0.0",
+		Latest: func(ctx context.Context) (string, string, error) {
+			checks.Add(1)
+			return "helper-v2.0.0", "https://evil.example/x.exe", nil
+		},
+		Download: func(ctx context.Context, url, dest string) error { t.Error("must not download"); return nil },
+		Idle:     func() bool { return true },
+		Restart:  func() { t.Error("must not restart") },
+		Logf:     nolog,
+		Sleep:    tickSleep(ticks, &sleeps, &mu),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { u.Loop(ctx); close(done) }()
+	waitUntil(t, func() bool { return checks.Load() == 1 })
+	cancel()
+	<-done
 }

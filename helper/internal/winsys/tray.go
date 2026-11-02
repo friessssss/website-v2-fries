@@ -14,7 +14,10 @@ import (
 // Tray is the notification-area icon and menu. Callbacks run on the tray's own
 // goroutine, never from inside SetState.
 type Tray struct {
-	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnQuit func()
+	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnFindRL, OnQuit func()
+	// OnReady runs (on its own goroutine) once the tray is up. Start anything
+	// that may call Quit from here, so Quit cannot run before Run.
+	OnReady func()
 
 	states  mailbox[stateMsg]
 	refresh mailbox[struct{}]
@@ -80,6 +83,7 @@ func (t *Tray) onReady() {
 	toasts := systray.AddMenuItem("Toasts on", "Turn goal toasts on or off")
 	pause := systray.AddMenuItem("Pause tracking", "")
 	repair := systray.AddMenuItem("Re-pair", "")
+	findRL := systray.AddMenuItem("Find Rocket League…", "Choose the Rocket League folder")
 	systray.AddSeparator()
 	quit := systray.AddMenuItem("Quit", "")
 
@@ -91,6 +95,7 @@ func (t *Tray) onReady() {
 		}
 	}
 	setToastTitle()
+	call(t.OnReady)
 	go func() {
 		for {
 			select {
@@ -115,6 +120,8 @@ func (t *Tray) onReady() {
 				call(t.OnTogglePause)
 			case <-repair.ClickedCh:
 				call(t.OnRepair)
+			case <-findRL.ClickedCh:
+				call(t.OnFindRL)
 			case <-quit.ClickedCh:
 				call(t.OnQuit)
 				systray.Quit()

@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,7 @@ const (
 	shutdownWait     = 3 * time.Second
 	relaunchLockWait = 15 * time.Second
 	rlProcess        = "RocketLeague.exe"
+	elevateTimeout   = 2 * time.Minute
 )
 
 const (
@@ -69,12 +71,20 @@ func main() { os.Exit(run()) }
 
 func run() int {
 	base := flag.String("base-url", baseURL, "site base URL (for local testing)")
-	ver := flag.String("version", version, "version reported to the site and used for update checks")
+	showVersion := flag.Bool("version", false, "show the version and exit")
 	reset := flag.Bool("reset", false, "delete the stored API key and exit")
 	relaunched := flag.Bool("relaunched", false, "internal: started by an update or restart")
+	patchIni := flag.String("patch-ini", "", "internal: patch this Stats API ini (run elevated) and exit")
 	flag.Parse()
 	args := os.Args[1:]
 
+	if *patchIni != "" {
+		return setup.PatchIni(*patchIni, statsini.OSFS{})
+	}
+	if *showVersion {
+		winsys.Info("RL Goal Tracker " + version)
+		return 0
+	}
 	if *reset {
 		if err := winsys.DeleteKey(); err != nil {
 			return 1
@@ -116,7 +126,7 @@ func run() int {
 	defer lg.Close()
 	logf := lg.Logf
 	winsys.ToastLogf = logf
-	logf("start version=%s base=%s relaunched=%v", *ver, *base, *relaunched)
+	logf("start version=%s base=%s relaunched=%v", version, *base, *relaunched)
 	if lockErr != nil {
 		logf("single-instance lock: %v (continuing)", lockErr)
 	}
@@ -124,23 +134,29 @@ func run() int {
 		logf("update swap: %v", swapErr)
 	}
 
-	settingsPath := filepath.Join(dir, "settings.json")
-	var settingsMu sync.Mutex
-	settings := setup.LoadSettings(settingsPath)
+	settings := setup.OpenSettings(filepath.Join(dir, "settings.json"))
+	saveSettings := func(f func(*setup.Settings)) {
+		if err := settings.Update(f); err != nil {
+			logf("save settings: %v", err)
+		}
+	}
 	tray := &winsys.Tray{}
-	tray.SetToastsOn(settings.Toasts)
+	tray.SetToastsOn(settings.Get().Toasts)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	site := setup.NewSite(api.Client{BaseURL: *base, Version: *ver})
+	site := setup.NewSite(api.Client{BaseURL: *base, Version: version})
 	label := setup.Label(os.Getenv("USERNAME"), os.Getenv("COMPUTERNAME"))
+	var notices []setup.Notice // shown once the tray is up
 
-	// 3. Pair if there is no key.
-	key, err := winsys.LoadKey()
-	if err != nil {
-		logf("load key: %v", err)
+	// 3. Pair if there is no key. A key-store error is not "unpaired": start
+	// in the re-pair state instead of running the first-run prompts.
+	key, loadErr := winsys.LoadKey()
+	if loadErr != nil {
+		logf("load key: %v", loadErr)
 	}
-	firstRun := key == ""
+	mode := setup.StartMode(key, loadErr)
+	firstRun := mode == setup.ModeFirstRun
 	if firstRun {
 		k, ok := setup.Pair(ctx, dialogs{}, site, label, logf)
 		if !ok {
@@ -156,7 +172,28 @@ func run() int {
 	site.SetKey(key)
 
 	// 4. Find Rocket League and enable the Stats API. The folder picker is only
-	// shown on the first run so a missing install doesn't nag every boot.
+	// shown on the first run (and from the tray menu) so a missing install
+	// doesn't nag every boot.
+	iniDeps := setup.IniDeps{
+		FS:        statsini.OSFS{},
+		RLRunning: func() bool { return winsys.ProcessRunning(rlProcess) },
+		Elevate: func(path string) error {
+			self, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			code, err := winsys.RunElevated(self, []string{"--patch-ini", path}, elevateTimeout)
+			if err != nil {
+				return err
+			}
+			if code != setup.PatchOK {
+				return fmt.Errorf("elevated patch exited with code %d", code)
+			}
+			return nil
+		},
+		Once: settings.Once,
+		Logf: logf,
+	}
 	exists := func(p string) bool {
 		ok, err := statsini.OSFS{}.Exists(p)
 		if err != nil {
@@ -164,23 +201,27 @@ func run() int {
 		}
 		return ok
 	}
-	cands := rlpath.Candidates(winsys.SteamRoot(), os.ReadFile)
-	if settings.RLDir != "" {
-		cands = append([]string{settings.RLDir}, cands...)
-	}
-	if rlDir, found := setup.FindRL(cands, exists, dialogs{}, firstRun); found {
-		logf("rocket league at %s", rlDir)
-		if rlDir != settings.RLDir {
-			settingsMu.Lock()
-			settings.RLDir = rlDir
-			if err := setup.SaveSettings(settingsPath, settings); err != nil {
-				logf("save settings: %v", err)
-			}
-			settingsMu.Unlock()
+	findAndEnable := func(ask bool) (bool, []setup.Notice) {
+		cands := rlpath.Candidates(winsys.SteamRoot(), os.ReadFile)
+		if d := settings.Get().RLDir; d != "" {
+			cands = append([]string{d}, cands...)
 		}
-		setup.EnableStatsAPI(rlDir, statsini.OSFS{}, func() bool { return winsys.ProcessRunning(rlProcess) }, dialogs{}, logf)
-	} else {
-		logf("rocket league not found")
+		rlDir, found := setup.FindRL(cands, exists, dialogs{}, ask)
+		if !found {
+			logf("rocket league not found")
+			return false, nil
+		}
+		logf("rocket league at %s", rlDir)
+		if rlDir != settings.Get().RLDir {
+			saveSettings(func(s *setup.Settings) { s.RLDir = rlDir })
+		}
+		_, ns := setup.EnableStatsAPI(rlDir, iniDeps)
+		return true, ns
+	}
+	rlFound, ns := findAndEnable(firstRun)
+	notices = append(notices, ns...)
+	if firstRun {
+		notices = append(notices, setup.FirstRunNotice(rlFound))
 	}
 
 	// 5. Install.
@@ -221,16 +262,21 @@ func run() int {
 	})
 	ctl.SetApp(a)
 	ctl.OnState(app.Idle)
+	if mode == setup.ModeKeyError {
+		a.SetNeedsPair()
+	}
 
 	appDone := make(chan struct{})
 	go func() { a.Run(ctx); close(appDone) }()
 	go ctl.PingLoop(ctx, sleepCtx)
 
-	// 7. Self-update. Dev builds never update themselves.
+	// 7. Self-update. Dev builds never update themselves. It starts from the
+	// tray's OnReady so its Restart (tray.Quit) can never run before tray.Run.
 	var relaunch atomic.Bool
-	if exe != "" && !strings.Contains(*ver, "-dev") {
-		u := &setup.Updater{
-			Current:  *ver,
+	var updater *setup.Updater
+	if exe != "" && !strings.Contains(version, "-dev") {
+		updater = &setup.Updater{
+			Current:  version,
 			Latest:   site.Latest,
 			Download: update.Download,
 			Dest:     filepath.Join(filepath.Dir(exe), update.NewExeName),
@@ -239,7 +285,12 @@ func run() int {
 			Logf:     logf,
 			Sleep:    sleepCtx,
 		}
-		go u.Loop(ctx)
+	}
+	tray.OnReady = func() {
+		if updater != nil {
+			go updater.Loop(ctx)
+		}
+		setup.ShowNotices(notices, settings.Once, winsys.Info, logf)
 	}
 
 	tray.OnOpen = func() {
@@ -249,14 +300,25 @@ func run() int {
 	}
 	tray.OnTogglePause = ctl.TogglePause
 	tray.OnToggleToasts = func() {
-		settingsMu.Lock()
-		defer settingsMu.Unlock()
-		settings.Toasts = tray.ToastsOn()
-		if err := setup.SaveSettings(settingsPath, settings); err != nil {
-			logf("save settings: %v", err)
-		}
+		on := tray.ToastsOn()
+		saveSettings(func(s *setup.Settings) { s.Toasts = on })
 	}
 	tray.OnRepair = func() { ctl.Repair(ctx) }
+	var findMu sync.Mutex
+	tray.OnFindRL = func() {
+		if !findMu.TryLock() {
+			return
+		}
+		defer findMu.Unlock()
+		found, ns := findAndEnable(true)
+		if !found {
+			return
+		}
+		if len(ns) == 0 {
+			ns = []setup.Notice{{Msg: setup.MsgRLFound}}
+		}
+		setup.ShowNotices(ns, settings.Once, winsys.Info, logf)
+	}
 	tray.OnQuit = cancel
 
 	tray.Run() // blocks on the main thread until Quit

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	neturl "net/url"
 	"sync"
 	"time"
 
@@ -235,8 +235,8 @@ func (u *Updater) check(ctx context.Context) bool {
 	if !update.Newer(u.Current, v) {
 		return false
 	}
-	if url == "" || !strings.HasPrefix(url, "https://") {
-		u.Logf("update: %s has no https download url", v)
+	if pu, err := neturl.Parse(url); err != nil || !update.AllowedURL(pu) {
+		u.Logf("update: %s download url is not an https GitHub url", v)
 		return false
 	}
 	u.Logf("update: downloading %s", v)

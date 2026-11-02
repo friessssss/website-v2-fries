@@ -15,16 +15,18 @@ import (
 
 // Settings persist in settings.json in the install dir.
 type Settings struct {
-	Toasts bool   `json:"toasts"`
-	RLDir  string `json:"rlDir,omitempty"` // a folder the user picked, tried first next time
+	Toasts bool            `json:"toasts"`
+	RLDir  string          `json:"rlDir,omitempty"` // a folder the user picked, tried first next time
+	Shown  map[string]bool `json:"shown,omitempty"` // once-only notices already shown
 }
 
 // LoadSettings reads path. A missing or unreadable file gives the defaults
 // (toasts on).
 func LoadSettings(path string) Settings {
 	var raw struct {
-		Toasts *bool  `json:"toasts"`
-		RLDir  string `json:"rlDir"`
+		Toasts *bool           `json:"toasts"`
+		RLDir  string          `json:"rlDir"`
+		Shown  map[string]bool `json:"shown"`
 	}
 	s := Settings{Toasts: true}
 	b, err := os.ReadFile(path)
@@ -35,7 +37,56 @@ func LoadSettings(path string) Settings {
 		s.Toasts = *raw.Toasts
 	}
 	s.RLDir = raw.RLDir
+	s.Shown = raw.Shown
 	return s
+}
+
+// SettingsStore is a goroutine-safe settings.json.
+type SettingsStore struct {
+	mu   sync.Mutex
+	path string
+	s    Settings
+}
+
+// OpenSettings loads path (defaults if missing).
+func OpenSettings(path string) *SettingsStore {
+	return &SettingsStore{path: path, s: LoadSettings(path)}
+}
+
+// Get returns a copy of the settings.
+func (st *SettingsStore) Get() Settings {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	c := st.s
+	c.Shown = make(map[string]bool, len(st.s.Shown))
+	for k, v := range st.s.Shown {
+		c.Shown[k] = v
+	}
+	return c
+}
+
+// Update changes the settings and saves them.
+func (st *SettingsStore) Update(f func(*Settings)) error {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	f(&st.s)
+	return SaveSettings(st.path, st.s)
+}
+
+// Once returns true the first time key is seen and persists it. If saving
+// fails it still remembers the key for this run.
+func (st *SettingsStore) Once(key string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.s.Shown[key] {
+		return false
+	}
+	if st.s.Shown == nil {
+		st.s.Shown = map[string]bool{}
+	}
+	st.s.Shown[key] = true
+	_ = SaveSettings(st.path, st.s)
+	return true
 }
 
 // SaveSettings writes path atomically, creating its directory.

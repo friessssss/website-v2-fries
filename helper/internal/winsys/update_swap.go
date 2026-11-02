@@ -13,21 +13,15 @@ const RelaunchedFlag = "--relaunched"
 
 // SwapIfPending finishes a downloaded update: if RLGoalTracker.new.exe exists
 // next to the running exe, it swaps it in, starts it with args plus
-// RelaunchedFlag and returns true; the caller must then exit. The .old.exe
+// RelaunchedFlag and returns true; the caller must then exit. A payload
+// that is not an executable is deleted, and a failed start is rolled back. The .old.exe
 // left behind is deleted on the next start.
 func SwapIfPending(args []string) (bool, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return false, err
 	}
-	swapped, err := swapFiles(exe)
-	if err != nil || !swapped {
-		return false, err
-	}
-	if err := Relaunch(exe, args); err != nil {
-		return false, err
-	}
-	return true, nil
+	return swapAndRelaunch(exe, func() error { return Relaunch(exe, args) })
 }
 
 // Relaunch starts exe with args plus RelaunchedFlag, detached.

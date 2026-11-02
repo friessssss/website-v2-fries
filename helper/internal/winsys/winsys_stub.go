@@ -26,7 +26,8 @@ var ToastLogf func(format string, args ...any)
 
 // Tray is a no-op on non-Windows platforms.
 type Tray struct {
-	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnQuit func()
+	OnOpen, OnTogglePause, OnToggleToasts, OnRepair, OnFindRL, OnQuit func()
+	OnReady                                                           func()
 }
 
 func (t *Tray) SetToastsOn(on bool)                     {}
@@ -46,4 +47,8 @@ func OpenURL(url string) error                  { return errUnsupported }
 func (t *Tray) Quit()                           {}
 func SingleInstance(wait time.Duration) (func(), bool, error) {
 	return func() {}, true, nil
+}
+
+func RunElevated(exe string, args []string, timeout time.Duration) (uint32, error) {
+	return 0, errUnsupported
 }

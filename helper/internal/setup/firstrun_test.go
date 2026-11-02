@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -224,33 +225,59 @@ var (
 	taIni      = filepath.Join(cfgDir, "TAStatsAPI.ini")
 )
 
+// onceSet is an in-memory Once.
+type onceSet struct {
+	mu   sync.Mutex
+	seen map[string]bool
+}
+
+func (o *onceSet) Once(k string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.seen == nil {
+		o.seen = map[string]bool{}
+	}
+	if o.seen[k] {
+		return false
+	}
+	o.seen[k] = true
+	return true
+}
+
+func iniDeps(m *memFS, running bool) IniDeps {
+	return IniDeps{FS: m, RLRunning: func() bool { return running }, Once: (&onceSet{}).Once, Logf: nolog}
+}
+
+func msgs(ns []Notice) []string {
+	var out []string
+	for _, n := range ns {
+		out = append(out, n.Msg)
+	}
+	return out
+}
+
 func TestEnableChangedWhileRunningAsksForRestart(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\r\nPacketSendRate=0\r\n")}}
-	d := &fakeDialogs{}
-	EnableStatsAPI("/rl", m, func() bool { return true }, d, nolog)
-	if string(m.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\r\nPacketSendRate=20\r\n" {
+	changed, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	if !changed || string(m.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\r\nPacketSendRate=20\r\n" {
 		t.Fatalf("ini %q", m.files[defaultIni])
 	}
-	if got := d.Infos(); len(got) != 1 || got[0] != MsgRestartRL {
-		t.Fatalf("infos %q", got)
+	if len(ns) != 1 || ns[0].Msg != MsgRestartRL || ns[0].Key != "" {
+		t.Fatalf("notices %+v", ns)
 	}
 }
 
-func TestEnableChangedNotRunningNoMessage(t *testing.T) {
+func TestEnableChangedNotRunningNoNotice(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")}}
-	d := &fakeDialogs{}
-	EnableStatsAPI("/rl", m, func() bool { return false }, d, nolog)
-	if len(d.Infos()) != 0 {
-		t.Fatal(d.Infos())
+	if _, ns := EnableStatsAPI("/rl", iniDeps(m, false)); len(ns) != 0 {
+		t.Fatal(ns)
 	}
 }
 
-func TestEnableUnchangedWhileRunningNoMessage(t *testing.T) {
+func TestEnableUnchangedWhileRunningNoNotice(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n")}}
-	d := &fakeDialogs{}
-	EnableStatsAPI("/rl", m, func() bool { return true }, d, nolog)
-	if len(d.Infos()) != 0 {
-		t.Fatal(d.Infos())
+	if changed, ns := EnableStatsAPI("/rl", iniDeps(m, true)); changed || len(ns) != 0 {
+		t.Fatal(changed, ns)
 	}
 }
 
@@ -259,7 +286,7 @@ func TestEnablePrefersTAStatsAPI(t *testing.T) {
 		defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n"),
 		taIni:      []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n"),
 	}}
-	EnableStatsAPI("/rl", m, func() bool { return false }, &fakeDialogs{}, nolog)
+	EnableStatsAPI("/rl", iniDeps(m, false))
 	if string(m.files[taIni]) != "[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n" {
 		t.Fatal("TAStatsAPI.ini not patched")
 	}
@@ -274,8 +301,9 @@ func TestEnableExistsErrorFallsBackToDefault(t *testing.T) {
 		existsErr: map[string]error{taIni: errors.New("access denied")},
 	}
 	var logged []string
-	logf := func(f string, a ...any) { logged = append(logged, f) }
-	EnableStatsAPI("/rl", m, func() bool { return false }, &fakeDialogs{}, logf)
+	d := iniDeps(m, false)
+	d.Logf = func(f string, a ...any) { logged = append(logged, f) }
+	EnableStatsAPI("/rl", d)
 	if string(m.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n" {
 		t.Fatal("default ini not patched")
 	}
@@ -284,25 +312,153 @@ func TestEnableExistsErrorFallsBackToDefault(t *testing.T) {
 	}
 }
 
-func TestEnableUnsupportedEncodingShowsInfoAndContinues(t *testing.T) {
+func TestEnableUnsupportedEncodingGivesOnceNoticeWithNextStep(t *testing.T) {
 	m := &memFS{files: map[string][]byte{defaultIni: {0xFF, 0xFE, '[', 0}}}
-	d := &fakeDialogs{}
-	EnableStatsAPI("/rl", m, func() bool { return true }, d, nolog)
-	if got := d.Infos(); len(got) != 1 || got[0] != MsgUnsupportedIni {
-		t.Fatalf("infos %q", got)
+	changed, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	if changed || len(ns) != 1 || ns[0].Key == "" {
+		t.Fatalf("notices %+v", ns)
+	}
+	if !strings.HasPrefix(ns[0].Msg, MsgUnsupportedIni) || !strings.Contains(ns[0].Msg, "PacketSendRate=20") || !strings.Contains(ns[0].Msg, defaultIni) {
+		t.Fatalf("msg %q", ns[0].Msg)
 	}
 	if m.files[defaultIni][0] != 0xFF || len(m.files) != 1 {
 		t.Fatal("file must be untouched, no backup")
 	}
 }
 
-func TestEnableReadErrorShowsInfo(t *testing.T) {
+func TestEnableReadErrorGivesOnceNoticeWithNextStep(t *testing.T) {
 	m := &memFS{files: map[string][]byte{}}
-	d := &fakeDialogs{}
-	EnableStatsAPI("/rl", m, func() bool { return true }, d, nolog)
-	if got := d.Infos(); len(got) != 1 || got[0] != MsgIniFailed {
-		t.Fatalf("infos %q", got)
+	_, ns := EnableStatsAPI("/rl", iniDeps(m, true))
+	if len(ns) != 1 || ns[0].Key == "" || !strings.Contains(ns[0].Msg, "PacketSendRate=20") || !strings.Contains(ns[0].Msg, defaultIni) {
+		t.Fatalf("notices %+v", ns)
+	}
+}
+
+// deniedFS fails writes with a permission error until unlocked (as if an
+// elevated helper patched the file).
+type deniedFS struct {
+	memFS
+	locked bool
+}
+
+func (d *deniedFS) WriteFile(p string, b []byte) error {
+	if d.locked {
+		return &fs.PathError{Op: "open", Path: p, Err: fs.ErrPermission}
+	}
+	return d.memFS.WriteFile(p, b)
+}
+
+func newDenied() *deniedFS {
+	return &deniedFS{memFS: memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")}}, locked: true}
+}
+
+func TestEnableAccessDeniedElevatesOnceAndSucceeds(t *testing.T) {
+	d := newDenied()
+	var elevated []string
+	deps := IniDeps{FS: d, RLRunning: func() bool { return true }, Once: (&onceSet{}).Once, Logf: nolog,
+		Elevate: func(path string) error {
+			elevated = append(elevated, path)
+			d.locked = false
+			_, err := statsini.Apply(path, d) // what the elevated --patch-ini child does
+			d.locked = true
+			return err
+		}}
+	changed, ns := EnableStatsAPI("/rl", deps)
+	if len(elevated) != 1 || elevated[0] != defaultIni {
+		t.Fatalf("elevated %q", elevated)
+	}
+	if !changed || len(ns) != 1 || ns[0].Msg != MsgRestartRL {
+		t.Fatalf("changed=%v notices %+v", changed, ns)
+	}
+	if string(d.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n" {
+		t.Fatal("not patched")
+	}
+}
+
+func TestEnableAccessDeniedElevationDeclinedGivesAdminNotice(t *testing.T) {
+	d := newDenied()
+	once := &onceSet{}
+	calls := 0
+	deps := IniDeps{FS: d, RLRunning: func() bool { return false }, Once: once.Once, Logf: nolog,
+		Elevate: func(path string) error { calls++; return errors.New("cancelled by user") }}
+	changed, ns := EnableStatsAPI("/rl", deps)
+	if changed || len(ns) != 1 || ns[0].Msg != NeedsAdminMsg(defaultIni) || ns[0].Key == "" {
+		t.Fatalf("changed=%v notices %+v", changed, ns)
+	}
+	want := "Rocket League's settings file needs permission to change. Right-click RLGoalTracker and choose Run as administrator once, or set PacketSendRate=20 in " + defaultIni + " yourself."
+	if NeedsAdminMsg(defaultIni) != want {
+		t.Fatal(NeedsAdminMsg(defaultIni))
+	}
+	// Next boot: no second UAC prompt, same (once-keyed) notice.
+	_, ns2 := EnableStatsAPI("/rl", deps)
+	if calls != 1 {
+		t.Fatalf("elevated %d times", calls)
+	}
+	if len(ns2) != 1 || ns2[0].Key != ns[0].Key {
+		t.Fatalf("notices %+v", ns2)
+	}
+}
+
+func TestEnableAccessDeniedWithoutElevator(t *testing.T) {
+	d := newDenied()
+	deps := IniDeps{FS: d, RLRunning: func() bool { return false }, Once: (&onceSet{}).Once, Logf: nolog}
+	_, ns := EnableStatsAPI("/rl", deps)
+	if len(ns) != 1 || ns[0].Msg != NeedsAdminMsg(defaultIni) {
+		t.Fatalf("notices %+v", ns)
+	}
+}
+
+func TestShowNoticesOnceKeyed(t *testing.T) {
+	once := &onceSet{}
+	var shown []string
+	show := func(m string) { shown = append(shown, m) }
+	ns := []Notice{{Key: "a", Msg: "A"}, {Msg: "always"}}
+	ShowNotices(ns, once.Once, show, nolog)
+	ShowNotices(ns, once.Once, show, nolog)
+	if strings.Join(shown, ",") != "A,always,always" {
+		t.Fatal(shown)
+	}
+}
+
+func TestFirstRunNotice(t *testing.T) {
+	if n := FirstRunNotice(true); n.Msg != "RL Goal Tracker is running in your tray. Goals will log automatically while you play." || n.Key == "" {
+		t.Fatal(n)
+	}
+	n := FirstRunNotice(false)
+	if !strings.HasPrefix(n.Msg, "Couldn't find Rocket League.") || !strings.Contains(n.Msg, "Find Rocket League") || n.Key == "" {
+		t.Fatal(n)
+	}
+}
+
+func TestStartMode(t *testing.T) {
+	if StartMode("k", nil) != ModePaired {
+		t.Fatal("paired")
+	}
+	if StartMode("", nil) != ModeFirstRun {
+		t.Fatal("first run")
+	}
+	if StartMode("", errors.New("cred manager broken")) != ModeKeyError {
+		t.Fatal("key error must not be treated as unpaired")
 	}
 }
 
 var _ statsini.FS = (*memFS)(nil)
+
+func TestPatchIniExitCodes(t *testing.T) {
+	m := &memFS{files: map[string][]byte{defaultIni: []byte("[TAGame.MatchStatsExporter_TA]\nPacketSendRate=0\n")}}
+	if c := PatchIni(defaultIni, m); c != 0 {
+		t.Fatal(c)
+	}
+	if string(m.files[defaultIni]) != "[TAGame.MatchStatsExporter_TA]\nPacketSendRate=20\n" {
+		t.Fatal("not patched")
+	}
+	if c := PatchIni(filepath.Join(cfgDir, "Engine.ini"), m); c != PatchBadPath {
+		t.Fatal("non-StatsAPI ini must be refused", c)
+	}
+	if c := PatchIni("relative/DefaultStatsAPI.ini", m); c != PatchBadPath {
+		t.Fatal("relative path must be refused", c)
+	}
+	if c := PatchIni(taIni, m); c != PatchFailed {
+		t.Fatal("missing file must fail", c)
+	}
+}
