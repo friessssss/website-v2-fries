@@ -22,7 +22,6 @@ describe('stats', () => {
         ['jake', 0],
         ['mason', 0],
         ['vandy', 0],
-        ['teammate', 1],
         ['opponent', 2],
       ]);
       expect(s.topSong).toEqual(NIGHT.topSong);
@@ -35,16 +34,30 @@ describe('stats', () => {
       const row = (a: string) => s.leaderboard.find((r) => r.actor === a)!;
       expect(row('zach')).toMatchObject({ displayName: 'Zach', inGame: ['Fries'] });
       expect(row('opponent')).toMatchObject({ displayName: 'Opponent', inGame: [] });
-      expect(row('teammate')).toMatchObject({ displayName: 'Teammate', inGame: [] });
     });
 
-    it('omits the teammate row when it has no goals', async () => {
+    it('counts teammate goals in goals for but never lists Teammate per person', async () => {
       const db = getDb();
       await seedNight(db);
-      await collections(db).events.deleteMany({ actor: 'teammate' });
-      const s = await sessionStats(db, { session: 'all' }, NIGHT.now);
-      expect(s.leaderboard.map((r) => r.actor)).not.toContain('teammate');
-      expect(s.leaderboard.at(-1)!.actor).toBe('opponent');
+      for (const session of ['current', 'all'] as const) {
+        for (const type of ['goal', 'demo'] as const) {
+          const s = await sessionStats(db, { session }, NIGHT.now, type);
+          expect(s.goalsFor).toBe(NIGHT.goalsFor); // includes the teammate goal
+          expect(s.leaderboard.map((r) => r.actor)).not.toContain('teammate');
+          expect(s.leaderboard.map((r) => r.displayName)).not.toContain('Teammate');
+          expect(s.leaderboard.at(-1)!.actor).toBe('opponent');
+          for (const song of s.songs) expect(Object.keys(song.byActor)).not.toContain('teammate');
+        }
+      }
+      // demo song rows still count the teammate's demo in goalsFor (ours), just not per person
+      await collections(db).events.insertOne({
+        type: 'demo', actor: 'teammate', song: 'Song C', artist: 'Artist C', trackId: 'tC', songResolved: true,
+        occurredAt: NIGHT.lastEventAt, sessionId: NIGHT.sessionId, source: 'helper', createdAt: NIGHT.lastEventAt,
+      });
+      const d = await sessionStats(db, { session: 'all' }, NIGHT.now, 'demo');
+      const c = d.songs.find((s) => s.trackId === 'tC')!;
+      expect(c.byActor).toEqual({ zach: 3 });
+      expect(c.goalsFor).toBe(4);
     });
 
     it('breaks goals down per song by actor, excluding events without a song', async () => {
@@ -57,7 +70,7 @@ describe('stats', () => {
         song: 'Song A',
         artist: 'Artist A',
         albumArt: null,
-        byActor: { zach: 2, ashton: 1, opponent: 1, teammate: 1 },
+        byActor: { zach: 2, ashton: 1, opponent: 1 },
         goalsFor: 4,
         goalsAgainst: 1,
       });
@@ -196,10 +209,8 @@ describe('stats', () => {
       const db = getDb();
       await seedNight(db);
       const p = await playerStats(db, 'zach', NIGHT.now);
-      expect(p.demoRecord.victims).toEqual([
-        { actor: 'opponent', count: 3 },
-        { actor: 'teammate', count: 1 },
-      ]);
+      // the teammate victim is pooled, not a person: left out of the per-person record
+      expect(p.demoRecord.victims).toEqual([{ actor: 'opponent', count: 3 }]);
       expect(p.demoRecord.demotedBy).toEqual([{ actor: 'opponent', count: 2 }]);
     });
 

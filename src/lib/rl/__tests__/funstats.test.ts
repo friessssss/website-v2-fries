@@ -13,10 +13,11 @@ describe('funStats', () => {
     await seedNight(db);
     await seedMatches(db);
     const f = await funStats(db, all, NIGHT.now);
-    expect(f.demoGrid.actors).toEqual(['ashton', 'jake', 'mason', 'sam', 'vandy', 'zach', 'teammate', 'opponent']);
+    expect(f.demoGrid.actors).toEqual(['ashton', 'jake', 'mason', 'sam', 'vandy', 'zach', 'opponent']);
     const i = (a: string) => f.demoGrid.actors.indexOf(a);
     expect(f.demoGrid.counts[i('zach')][i('opponent')]).toBe(3);
-    expect(f.demoGrid.counts[i('zach')][i('teammate')]).toBe(1);
+    expect(f.demoGrid.counts).toHaveLength(7);
+    for (const row of f.demoGrid.counts) expect(row).toHaveLength(7);
     expect(f.demoGrid.counts[i('opponent')][i('zach')]).toBe(2);
     expect(f.demoGrid.counts[i('ashton')][i('opponent')]).toBe(1);
     expect(f.demoGrid.counts[i('zach')][i('zach')]).toBe(0);
@@ -116,5 +117,12 @@ describe('funStats', () => {
     expect(f.brickWall).toMatchObject({ actor: 'zach', saves: 3 });
     expect(f.playmaker.top).toEqual({ actor: 'ashton', displayName: 'Ashton', count: 2 });
     expect(f.playmaker.pair).toEqual({ assister: 'ashton', scorer: 'zach', count: 2 });
+    const people = [
+      ...f.demoLeaderboard.map((r) => r.actor),
+      ...f.demoGrid.actors,
+      ...f.nightOfTheNight.map((r) => r.actor),
+    ];
+    expect(people).not.toContain('teammate');
+    expect(f.demoLeaderboard.map((r) => r.displayName)).not.toContain('Teammate');
   });
 });

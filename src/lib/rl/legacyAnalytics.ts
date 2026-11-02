@@ -7,6 +7,8 @@ export type GroupBy = 'hour' | 'day' | 'week' | 'month' | string;
 
 type LegacyGoal = {
   player: string;
+  /** Goals by a non-roster player on our team: counted in the totals, never listed per player. */
+  teammate: boolean;
   /** Display spelling of the goal's song group. */
   song: string;
   artist: string;
@@ -21,7 +23,7 @@ type LegacyGoal = {
 export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Rolling windows behind the `timeFilter` values; 'lifetime' (absent here) means no bound. */
 export const WINDOW_DAYS: Record<string, number> = { week: 7, month: 30, '3months': 90, year: 365 };
-const ACTOR_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
+const ACTOR_NAMES: Record<string, string> = { opponent: 'Opponent' };
 
 type PlayerGoals = { player: string; goals: number };
 
@@ -67,6 +69,7 @@ async function loadGoals(
     const { song, artist } = songs.get(songKey);
     return {
       player: ACTOR_NAMES[e.actor] ?? names.get(e.actor) ?? e.actor,
+      teammate: e.actor === 'teammate',
       song,
       artist,
       timestamp: e.occurredAt.toISOString(),
@@ -94,9 +97,9 @@ const newAgg = (): Agg => ({
   playerBreakdown: new Map(),
 });
 
-function tally(agg: Agg, player: string) {
+function tally(agg: Agg, { player, teammate }: Pick<LegacyGoal, 'player' | 'teammate'>) {
   agg.totalGoals++;
-  agg.playerBreakdown.set(player, (agg.playerBreakdown.get(player) || 0) + 1);
+  if (!teammate) agg.playerBreakdown.set(player, (agg.playerBreakdown.get(player) || 0) + 1);
   if (player === 'Opponent') agg.opponentGoals++;
   else agg.friendsGoals++;
   agg.netScore = agg.friendsGoals - agg.opponentGoals;
@@ -119,14 +122,14 @@ export async function analyticsPayload(
       s = { song: g.song, artist: g.artist, ...newAgg(), playlist: g.playlist };
       songMap.set(g.songKey, s);
     }
-    tally(s, g.player);
+    tally(s, g);
 
     let a = artistMap.get(g.artistKey);
     if (!a) {
       a = { artist: g.artistName, ...newAgg(), songs: [] };
       artistMap.set(g.artistKey, a);
     }
-    tally(a, g.player);
+    tally(a, g);
     if (!a.songs.includes(g.song)) a.songs.push(g.song);
   }
 
@@ -185,7 +188,7 @@ export async function timelinePayload(
       p = { period: key, ...newAgg(), songs: [] };
       map.set(key, p);
     }
-    tally(p, g.player);
+    tally(p, g);
     const songKey = `${g.song} - ${g.artist}`;
     if (!p.songs.includes(songKey)) p.songs.push(songKey);
   }

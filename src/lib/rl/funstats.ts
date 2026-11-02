@@ -22,7 +22,7 @@ export type FunStats = {
 
 export const WIN_RATE_MIN_MATCHES = 3;
 
-const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
+const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent' };
 
 function bump<K>(m: Map<K, number>, k: K): number {
   const n = (m.get(k) ?? 0) + 1;
@@ -52,10 +52,9 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
     .map((actor) => ({ actor, displayName: nameOf(actor), count: demoCounts.get(actor) ?? 0 }))
     .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
 
-  // Who demos who.
+  // Who demos who: roster plus Opponent (teammate demos are not a person's record).
   const actors: Actor[] = [
     ...roster.slice().sort((a, b) => a.displayName.localeCompare(b.displayName)).map((p) => p.slug),
-    'teammate',
     'opponent',
   ];
   const counts = actors.map(() => actors.map(() => 0));

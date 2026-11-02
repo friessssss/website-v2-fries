@@ -49,3 +49,10 @@ export function playersIn(rows: Breakdown[]): string[] {
 
 export const goalsFor = (row: Breakdown, player: string) =>
   row.playerBreakdown.find((p) => p.player === player)?.goals ?? 0;
+
+/**
+ * Goals for minus Opponent goals, less the goals of hidden players. Starts from friendsGoals so goals
+ * not listed per player (teammates) always count.
+ */
+export const differential = (row: Breakdown, players: string[], hidden: Set<string>) =>
+  row.friendsGoals - players.filter((p) => hidden.has(p)).reduce((n, p) => n + goalsFor(row, p), 0) - row.opponentGoals;

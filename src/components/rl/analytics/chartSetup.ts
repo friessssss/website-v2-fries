@@ -14,8 +14,8 @@ import {
   Tooltip,
 } from 'chart.js';
 import type { ChartDataset, ChartOptions, LegendItem } from 'chart.js';
-import { RL_CHART_DEFAULTS, TEAMMATE, resolvedFonts, seriesColor, withAlpha } from './chartTheme';
-import { OPPONENT, goalsFor, type Breakdown } from './types';
+import { RL_CHART_DEFAULTS, resolvedFonts, seriesColor, withAlpha } from './chartTheme';
+import { OPPONENT, differential, goalsFor, type Breakdown } from './types';
 
 ChartJS.register(
   BarController,
@@ -35,33 +35,13 @@ export type Mixed = ChartDataset<'bar' | 'line', number[]>;
 const DIFF_COLOR = '#fdfef8';
 export const DIFF_LABEL = 'Goal differential';
 
-/** Legend boxes are outlines in the series colour, never filled; Teammate's outline is dashed. */
+/** Legend boxes are outlines in the series colour, never filled. */
 function outlinedLabels(chart: ChartJS): LegendItem[] {
   return ChartJS.defaults.plugins.legend.labels.generateLabels(chart).map((item) => ({
     ...item,
     fillStyle: RL_CHART_DEFAULTS.legend.boxFill,
     lineWidth: 1.5,
-    lineDash: item.text === TEAMMATE ? [3, 2] : item.lineDash,
   }));
-}
-
-/** Diagonal hatch in `color`, for Teammate bars. Falls back to a faint fill without a DOM. */
-export function hatch(color: string): CanvasPattern | string {
-  const fallback = withAlpha(color, 0.15);
-  if (typeof document === 'undefined') return fallback;
-  const c = document.createElement('canvas');
-  c.width = c.height = 6;
-  const ctx = c.getContext('2d');
-  if (!ctx) return fallback;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (const [x0, y0, x1, y1] of [[0, 6, 6, 0], [-1, 1, 1, -1], [5, 7, 7, 5]]) {
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-  }
-  ctx.stroke();
-  return ctx.createPattern(c, 'repeat') ?? fallback;
 }
 
 export function rlOptions({
@@ -157,7 +137,7 @@ export function breakdownDatasets(
       label: player,
       data,
       hidden: hidden.has(player),
-      backgroundColor: player === TEAMMATE ? hatch(color) : color,
+      backgroundColor: color,
       borderColor: color,
       borderWidth: 1,
       stack: enhanced ? 'goals' : 'friends',
@@ -184,9 +164,7 @@ export function differentialLine(rows: Breakdown[], players: string[], hidden: S
   return {
     type: 'line',
     label: DIFF_LABEL,
-    data: rows.map(
-      (r) => players.filter((p) => !hidden.has(p)).reduce((n, p) => n + goalsFor(r, p), 0) - r.opponentGoals,
-    ),
+    data: rows.map((r) => differential(r, players, hidden)),
     borderColor: DIFF_COLOR,
     backgroundColor: DIFF_COLOR,
     borderWidth: 2.5,
