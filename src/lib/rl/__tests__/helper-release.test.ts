@@ -45,6 +45,14 @@ describe('latestHelper caching', () => {
     expect(f).toHaveBeenCalledTimes(2);
   });
 
+  it('skips a newer prerelease and returns the older stable release', async () => {
+    counting(200, [
+      { tag_name: 'helper-v2.1.0-rc1', prerelease: true, published_at: '2026-10-20T00:00:00Z', assets: [{ name: 'rc.exe', browser_download_url: 'https://x/rc.exe' }] },
+      { tag_name: 'helper-v2.0.0', prerelease: false, published_at: '2026-10-01T00:00:00Z', assets: [{ name: 'h.exe', browser_download_url: 'https://x/h.exe' }] },
+    ]);
+    expect(await latestHelper(T0)).toEqual({ version: '2.0.0', downloadUrl: 'https://x/h.exe' });
+  });
+
   it('the route reads the clock via Date.now (fake timers)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { GET } = await import('@/app/api/rl/v1/helper/latest/route');

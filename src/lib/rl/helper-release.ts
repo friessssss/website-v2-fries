@@ -8,6 +8,7 @@ type Latest = { version: string; downloadUrl: string };
 type Release = {
   tag_name?: string;
   draft?: boolean;
+  prerelease?: boolean;
   published_at?: string | null;
   assets?: Array<{ name?: string; browser_download_url?: string }>;
 };
@@ -50,7 +51,7 @@ async function fetchLatest(): Promise<Latest> {
   }
   if (!Array.isArray(releases)) throw new HttpError(502, 'upstream_error');
   const candidates = releases
-    .filter((r) => !r.draft && typeof r.tag_name === 'string' && r.tag_name.startsWith('helper-v'))
+    .filter((r) => !r.draft && !r.prerelease && typeof r.tag_name === 'string' && r.tag_name.startsWith('helper-v'))
     .map((r) => ({
       r,
       exe: r.assets?.find((a) => a.name?.toLowerCase().endsWith('.exe') && a.browser_download_url),
