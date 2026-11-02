@@ -82,6 +82,9 @@ type Controller struct {
 	Tray     StateSink
 	QueueLen func() int
 	Logf     Logf
+	// SavePaused persists the pause setting when the user changes it
+	// (optional).
+	SavePaused func(paused bool)
 
 	mu       sync.Mutex
 	app      AppControl
@@ -116,17 +119,37 @@ func (c *Controller) render(s app.State) {
 // State is the last state the app reported.
 func (c *Controller) State() app.State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
 
-// TogglePause pauses or resumes tracking.
+// TogglePause pauses or resumes tracking and persists the choice.
 func (c *Controller) TogglePause() {
 	c.mu.Lock()
 	c.paused = !c.paused
 	p := c.paused
 	a := c.app
 	c.mu.Unlock()
+	c.savePaused(p)
 	if p {
 		a.Pause()
 	} else {
 		a.Resume()
+	}
+}
+
+// RestorePaused applies a pause setting loaded at startup (without saving it
+// again).
+func (c *Controller) RestorePaused(p bool) {
+	if !p {
+		return
+	}
+	c.mu.Lock()
+	c.paused = true
+	a := c.app
+	c.mu.Unlock()
+	a.Pause()
+}
+
+func (c *Controller) savePaused(p bool) {
+	if c.SavePaused != nil {
+		c.SavePaused(p)
 	}
 }
 
@@ -150,9 +173,13 @@ func (c *Controller) Repair(ctx context.Context) {
 	}
 	c.Site.SetKey(key)
 	c.mu.Lock()
+	wasPaused := c.paused
 	c.paused = false // Resume also unpauses
 	a := c.app
 	c.mu.Unlock()
+	if wasPaused {
+		c.savePaused(false)
+	}
 	a.Resume()
 	c.Logf("re-paired")
 }
@@ -193,8 +220,9 @@ func (c *Controller) PingLoop(ctx context.Context, sleep func(context.Context, t
 }
 
 // Updater checks for a newer helper on start and every UpdateEvery. When one
-// is downloaded it waits until Idle reports a quiet moment, then calls
-// Restart (which relaunches into the swap) and returns.
+// is downloaded it waits until Idle reports a quiet moment (no match in
+// progress), records the version with MarkPending, then calls Restart (which
+// relaunches into the swap) and returns.
 type Updater struct {
 	Current  string
 	Latest   func(ctx context.Context) (version, url string, err error)
@@ -204,18 +232,26 @@ type Updater struct {
 	Restart  func()
 	Logf     Logf
 	Sleep    func(context.Context, time.Duration) error
+	// Skip reports a version whose earlier install did not take (optional).
+	Skip func(version string) bool
+	// MarkPending persists the version about to be restarted into, so the
+	// next start can tell whether the swap happened (optional).
+	MarkPending func(version string)
 }
 
 // Loop runs until ctx ends or a restart was requested.
 func (u *Updater) Loop(ctx context.Context) {
 	for {
-		if u.check(ctx) {
+		if v, ok := u.check(ctx); ok {
 			for !u.Idle() {
 				if u.Sleep(ctx, RestartPoll) != nil {
 					return
 				}
 			}
-			u.Logf("update: restarting into the new version")
+			if u.MarkPending != nil {
+				u.MarkPending(v)
+			}
+			u.Logf("update: restarting into %s", v)
 			u.Restart()
 			return
 		}
@@ -225,24 +261,58 @@ func (u *Updater) Loop(ctx context.Context) {
 	}
 }
 
-// check returns true once a newer build has been downloaded to Dest.
-func (u *Updater) check(ctx context.Context) bool {
+// check returns the version once a newer build has been downloaded to Dest.
+func (u *Updater) check(ctx context.Context) (string, bool) {
 	v, url, err := u.Latest(ctx)
 	if err != nil {
 		u.Logf("update: check: %v", err)
-		return false
+		return "", false
 	}
 	if !update.Newer(u.Current, v) {
-		return false
+		return "", false
+	}
+	if u.Skip != nil && u.Skip(v) {
+		u.Logf("update: %s did not install last time; skipping it for now", v)
+		return "", false
 	}
 	if pu, err := neturl.Parse(url); err != nil || !update.AllowedURL(pu) {
-		u.Logf("update: %s download url is not an https GitHub url", v)
-		return false
+		u.Logf("update: %s download url is not an https GitHub release url", v)
+		return "", false
 	}
 	u.Logf("update: downloading %s", v)
 	if err := u.Download(ctx, url, u.Dest); err != nil {
 		u.Logf("update: download: %v", err)
-		return false
+		return "", false
 	}
-	return true
+	return v, true
+}
+
+// ResolvePendingUpdate runs at startup. If the last run restarted into an
+// update (PendingUpdate) but this process is not that version, the swap never
+// happened (the download was quarantined, or the new build failed to start
+// and was rolled back): skip that version for UpdateEvery so the helper does
+// not download and restart forever. The marker is cleared either way.
+func ResolvePendingUpdate(s *Settings, current string, now time.Time, logf Logf) {
+	p := s.PendingUpdate
+	if p == "" {
+		return
+	}
+	s.PendingUpdate = ""
+	if sameVersion(p, current) {
+		logf("update: now running %s", p)
+		return
+	}
+	logf("update: restarted for %s but still running %s; skipping %s for %v", p, current, p, UpdateEvery)
+	s.SkipUpdate = p
+	s.SkipUntil = now.Add(UpdateEvery)
+}
+
+// SkipsUpdate reports whether v is the skipped version and the skip is
+// still in force at now. A different (newer) version is never skipped.
+func (s Settings) SkipsUpdate(v string, now time.Time) bool {
+	return s.SkipUpdate != "" && sameVersion(s.SkipUpdate, v) && now.Before(s.SkipUntil)
+}
+
+func sameVersion(a, b string) bool {
+	return !update.Newer(a, b) && !update.Newer(b, a)
 }

@@ -492,6 +492,15 @@ func (a *App) notifyGoals(batch []model.Event, results []api.Result) {
 	}
 }
 
+// InMatch reports whether the current Stats API connection is inside a
+// match (from match_start until the match ends or the connection drops).
+// Safe to call from any goroutine.
+func (a *App) InMatch() bool {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	return a.src != nil && a.src.InMatch()
+}
+
 // currentState returns the last computed state.
 func (a *App) currentState() State {
 	a.mu.Lock()

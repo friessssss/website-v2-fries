@@ -147,6 +147,9 @@ func run() int {
 			logf("save settings: %v", err)
 		}
 	}
+	if settings.Get().PendingUpdate != "" {
+		saveSettings(func(s *setup.Settings) { setup.ResolvePendingUpdate(s, version, time.Now(), logf) })
+	}
 	tray := &winsys.Tray{}
 	tray.SetToastsOn(settings.Get().Toasts)
 
@@ -251,6 +254,7 @@ func run() int {
 	ctl := &setup.Controller{
 		Dialogs: dialogs{}, Site: site, Keys: keyStore{}, Label: label,
 		Tray: tray, QueueLen: q.Len, Logf: logf,
+		SavePaused: func(p bool) { saveSettings(func(s *setup.Settings) { s.Paused = p }) },
 	}
 	a := app.New(app.Deps{
 		Dial: func(ctx context.Context) (app.Stream, error) {
@@ -269,6 +273,7 @@ func run() int {
 	})
 	ctl.SetApp(a)
 	ctl.OnState(app.Idle)
+	ctl.RestorePaused(settings.Get().Paused)
 	if mode == setup.ModeKeyError {
 		a.SetNeedsPair()
 	}
@@ -287,10 +292,15 @@ func run() int {
 			Latest:   site.Latest,
 			Download: update.Download,
 			Dest:     filepath.Join(filepath.Dir(exe), update.NewExeName),
-			Idle:     func() bool { return ctl.State() != app.Connected },
-			Restart:  func() { relaunch.Store(true); tray.Quit() },
-			Logf:     logf,
-			Sleep:    sleepCtx,
+			// Never restart mid-match; paused, offline or in menus is fine.
+			Idle:    func() bool { return !a.InMatch() },
+			Restart: func() { relaunch.Store(true); tray.Quit() },
+			Logf:    logf,
+			Sleep:   sleepCtx,
+			Skip:    func(v string) bool { return settings.Get().SkipsUpdate(v, time.Now()) },
+			MarkPending: func(v string) {
+				saveSettings(func(s *setup.Settings) { s.PendingUpdate = v })
+			},
 		}
 	}
 	tray.OnReady = func() {

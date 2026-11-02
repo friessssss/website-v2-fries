@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -58,14 +59,25 @@ func Newer(current, latest string) bool {
 	return false
 }
 
-// AllowedURL reports whether u may serve an update: https on github.com or a
-// *.githubusercontent.com host (where release assets redirect to).
+// ReleasePathPrefix is the only github.com path an update may come from.
+const ReleasePathPrefix = "/friessssss/website-v2-fries/releases/download/"
+
+// AllowedURL reports whether u may serve an update: https on github.com under
+// ReleasePathPrefix, or a *.githubusercontent.com host (where release assets
+// redirect to).
 func AllowedURL(u *url.URL) bool {
 	if u == nil || u.Scheme != "https" || u.User != nil {
 		return false
 	}
 	h := strings.ToLower(u.Hostname())
-	return h == "github.com" || strings.HasSuffix(h, ".githubusercontent.com")
+	if strings.HasSuffix(h, ".githubusercontent.com") {
+		return true
+	}
+	if h != "github.com" {
+		return false
+	}
+	p := u.Path // decoded, so %2e%2e is caught as ..
+	return strings.HasPrefix(p, ReleasePathPrefix) && path.Clean(p) == p
 }
 
 // Download fetches url into dest. The URL and every redirect must pass

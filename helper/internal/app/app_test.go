@@ -693,3 +693,21 @@ func TestBufferedEventFlushedWhenStreamEnds(t *testing.T) {
 		t.Fatalf("queued %+v", got)
 	}
 }
+
+func TestInMatchFollowsCurrentSource(t *testing.T) {
+	h := newHarness(t, okAll)
+	a, cancel, done := h.start()
+	defer func() { cancel(); <-done }()
+	if a.InMatch() {
+		t.Fatal("no match yet")
+	}
+	waitFor(t, "connected", func() bool { return hasState(h, Connected) })
+	h.src.inMatch.Store(true)
+	if !a.InMatch() {
+		t.Fatal("in match")
+	}
+	h.src.inMatch.Store(false)
+	if a.InMatch() {
+		t.Fatal("match over")
+	}
+}
