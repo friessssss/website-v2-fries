@@ -28,6 +28,14 @@ export type SongMeta = {
   albumArt: string | null;
 };
 
+/** Cached Spotify Search result, keyed by songKey; `meta` null caches a miss. */
+export interface SongMetaDoc {
+  _id: string;
+  meta: SongMeta | null;
+  expiresAt: Date;
+  updatedAt: Date;
+}
+
 export interface PlayerDoc {
   _id?: ObjectId;
   slug: string;

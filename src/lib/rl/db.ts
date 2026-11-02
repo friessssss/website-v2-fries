@@ -6,6 +6,7 @@ import type {
   MatchDoc,
   PairingCodeDoc,
   PlayerDoc,
+  SongMetaDoc,
   SpotifyAccountDoc,
 } from './types';
 
@@ -55,6 +56,7 @@ export function collections(db: Db) {
     apiKeys: db.collection<ApiKeyDoc>('apiKeys'),
     pairingCodes: db.collection<PairingCodeDoc>('pairingCodes'),
     legacyGoals: db.collection<LegacyGoalDoc>('goals'),
+    songMeta: db.collection<SongMetaDoc>('songMeta'),
   } satisfies Record<string, Collection<any>>;
 }
 
