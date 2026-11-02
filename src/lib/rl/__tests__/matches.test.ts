@@ -101,6 +101,29 @@ describe('matches', () => {
     expect(first!.songs).toHaveLength(1);
   });
 
+  it('repeat match_end with a different at and score leaves the match unchanged', async () => {
+    await started();
+    await applyMatchEnd(db(), playing(mk('V')), { ...base, score: { '0': 2, '1': 3 } });
+    const first = await get();
+    const r = await applyMatchEnd(db(), playing(mk('W')), {
+      ...base, at: new Date(AT.getTime() + 60000), score: { '0': 5, '1': 1 },
+    });
+    expect(r.status).toBe('duplicate');
+    expect(await get()).toEqual(first);
+  });
+
+  it('match_end with unknown ourTeam keeps endedAt and a later one can still score', async () => {
+    await applyMatchEnd(db(), playing(null), { ...base, score: { '0': 1, '1': 2 } });
+    const later = new Date(AT.getTime() + 60000);
+    expect((await applyMatchEnd(db(), playing(null), { ...base, at: later, score: { '0': 1, '1': 2 } })).status)
+      .toBe('duplicate');
+    expect((await get())!.endedAt).toEqual(AT);
+    await started();
+    const r = await applyMatchEnd(db(), playing(mk('V')), { ...base, at: later, score: { '0': 2, '1': 3 } });
+    expect(r.status).toBe('recorded');
+    expect(await get()).toMatchObject({ endedAt: AT, ourScore: 3, result: 'win', victorySong: { trackId: 'V' } });
+  });
+
   it('listMatches filters by session and sorts newest first', async () => {
     const { matches } = collections(db());
     await matches.insertMany([

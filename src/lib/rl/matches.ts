@@ -100,37 +100,34 @@ export async function applyMatchEnd(
 ): Promise<IngestResult> {
   const before = await ensureMatch(db, e.matchGuid, e.sessionId, e.at);
   const { matches } = collections(db);
-  const repeat = before.endedAt !== undefined;
+  // endedAt is set once and never drifts.
+  const ended = await matches.updateOne(
+    { guid: e.matchGuid, endedAt: { $exists: false } },
+    { $set: { endedAt: e.at } },
+  );
   const { ourTeam } = before;
 
-  if (ourTeam === undefined) {
-    await matches.updateOne({ guid: e.matchGuid }, { $set: { endedAt: e.at } });
-    return { status: repeat ? 'duplicate' : 'recorded' };
-  }
+  // Without ourTeam we cannot score; a later match_end may still fill scores once.
+  if (ourTeam === undefined) return { status: ended.modifiedCount > 0 ? 'recorded' : 'duplicate' };
 
   const ourScore = e.score[String(ourTeam) as '0' | '1'];
   const theirScore = e.score[String(1 - ourTeam) as '0' | '1'];
   const result = ourScore > theirScore ? 'win' : ourScore < theirScore ? 'loss' : undefined;
-  await matches.updateOne(
-    { guid: e.matchGuid },
-    {
-      $set: { endedAt: e.at, ourScore, theirScore, ...(result && { result }) },
-      ...(result === undefined && { $unset: { result: '' as const } }),
-    },
+  // The first scored match_end wins atomically.
+  const scored = await matches.updateOne(
+    { guid: e.matchGuid, ourScore: { $exists: false } },
+    { $set: { ourScore, theirScore, ...(result && { result }) } },
   );
+  if (scored.modifiedCount === 0) return { status: 'duplicate' };
 
   if (result === 'win') {
     const track = await currentTrack();
     if (track) {
-      // Only the first match_end decides the victory song, so repeats stay idempotent.
-      await matches.updateOne(
-        { guid: e.matchGuid, victorySong: { $exists: false } },
-        { $set: { victorySong: songEntry(track) } },
-      );
+      await matches.updateOne({ guid: e.matchGuid }, { $set: { victorySong: songEntry(track) } });
       await addSong(db, e.matchGuid, track, e.at);
     }
   }
-  return { status: repeat ? 'duplicate' : 'recorded' };
+  return { status: 'recorded' };
 }
 
 export async function listMatches(db: Db, session: 'current' | 'all' | string): Promise<MatchDoc[]> {
