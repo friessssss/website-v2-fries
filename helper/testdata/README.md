@@ -34,8 +34,6 @@ Rename the best TCP capture to `match-tcp.bin` and the WebSocket capture to `mat
 
 ## Findings
 
-### Which ini## Findings
-
 From Zach's capture on 2026-11-02 (1v1 casual, raw TCP on 49123). `match-tcp.bin` is trimmed and anonymised from the 10.6 MB original: every non-UpdateState event except BallHit and ClockUpdatedSeconds, plus every 20th UpdateState; PrimaryId and Loadout removed; the opponent renamed "OppPlayer1". Roster player: "Fries" (team 1, Orange).
 
 ### Which ini was used
@@ -67,7 +65,7 @@ Not tested.
 ### Counts of each event in the capture
 Full match: UpdateState 5377, ClockUpdatedSeconds 214, BallHit 166, StatfeedEvent 14, GoalScored 6, CountdownBegin 4, RoundStarted 4, GoalReplayStart 3, GoalReplayEnd 3, CrossbarHit 3, PlayerJoined 2, PlayerLeft 2, MatchCreated 1, MatchInitialized 1, GoalReplayWillEnd 1, MatchEnded 1, MatchDestroyed 1. The fixture keeps 268 UpdateState and drops BallHit and ClockUpdatedSeconds (314 messages).
 
-Timeline: goals at clock 288 (OppPlayer1), 242 (OppPlayer1), 156 (Fries); EpicSave by Fries at 190; Demolish Fries -> OppPlayer1 at 109; MatchEnded at clock 88 (opponent left), WinnerTeamNum 0; final score Blue 2, Orange 1. (In the trimmed fixture the nearest sampled clocks are 288, 243, 157, 191 and 110.)
+Timeline: goals at clock 288 (OppPlayer1), 242 (OppPlayer1), 156 (Fries); EpicSave by Fries at 190; Demolish Fries -> OppPlayer1 at 109; MatchEnded at clock 88 (opponent left), WinnerTeamNum 0; final score Blue 2, Orange 1. (In the trimmed fixture the save and demo carry the nearest sampled clocks, 191 and 110.)
 
 Expected parser output for the fixture: 1 match_start (Fries t1, OppPlayer1 t0), 3 goals, 1 save (Fries), 1 demo (Fries -> OppPlayer1), 0 assists, 1 match_end with score `{"0":2,"1":1}`.
 
@@ -75,7 +73,7 @@ Expected parser output for the fixture: 1 match_start (Fries t1, OppPlayer1 t0),
 - No assister on GoalScored: goals are sent without one; assists come from StatfeedEvent "Assist".
 - GoalScored fires again during each goal replay with an empty scorer name and GoalTime 0 (UpdateState `bReplay` true). The parser ignores GoalScored with no scorer name or during a replay.
 - MatchEnded has no scores: match_end takes them from the latest UpdateState `Game.Teams[].Score`.
-- gameTime is the latest UpdateState `Game.TimeSeconds` (integer clock), plus 10000 in overtime, so every helper in the lobby computes the same value for dedupe.
+- gameTime is the UpdateState `Game.TimeSeconds` integer clock, plus 10000 in overtime. Goals are stamped with the first clock reading after GoalScored (the clock is frozen from the goal until kickoff), so every helper in the lobby sends the same value: 288, 242 and 156 in this capture. Saves, assists and demos use the latest clock (the server allows a small tolerance).
 - The first UpdateState lists only the local player (the opponent loads later), so match_start waits until the match is live (MatchInitialized, CountdownBegin or RoundStarted, or the clock moving when joining mid-match) and is otherwise sent just before the first stat event.
 
 ### Spotify Jam guest check

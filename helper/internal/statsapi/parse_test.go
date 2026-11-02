@@ -84,10 +84,11 @@ func TestFixtureEvents(t *testing.T) {
 	gt := func(v float64) *float64 { return &v }
 	want := []model.Event{
 		{Kind: "match_start", Players: []model.PlayerRef{{Name: "Fries", Team: 1}, {Name: "OppPlayer1", Team: 0}}},
+		// Goals carry the clock frozen after the goal (first reading after it).
 		{Kind: "goal", GameTime: gt(288), Scorer: ref("OppPlayer1", 0)},
-		{Kind: "goal", GameTime: gt(243), Scorer: ref("OppPlayer1", 0)},
+		{Kind: "goal", GameTime: gt(242), Scorer: ref("OppPlayer1", 0)},
 		{Kind: "save", GameTime: gt(191), Player: ref("Fries", 1)},
-		{Kind: "goal", GameTime: gt(157), Scorer: ref("Fries", 1)},
+		{Kind: "goal", GameTime: gt(156), Scorer: ref("Fries", 1)},
 		{Kind: "demo", GameTime: gt(110), Attacker: ref("Fries", 1), Victim: ref("OppPlayer1", 0)},
 		{Kind: "match_end", Score: map[string]int{"0": 2, "1": 1}},
 	}
@@ -179,12 +180,18 @@ func TestRepeatedMessagesSentOnce(t *testing.T) {
 	p := startedParser(t)
 	goal := goalScored("G", "A", 0)
 	save := statfeed("G", "Save", map[string]any{"Name": "B", "TeamNum": 1}, nil)
+	frozen := updateState("G", 249, false)
 	var evs []model.Event
 	for i := 0; i < 3; i++ {
 		evs = append(evs, p.Feed(goal)...)
 		evs = append(evs, p.Feed(save)...)
 	}
-	if !reflect.DeepEqual(kinds(evs), []string{"goal", "save"}) {
+	for i := 0; i < 2; i++ {
+		evs = append(evs, p.Feed(frozen)...)
+		evs = append(evs, p.Feed(goal)...)
+		evs = append(evs, p.Feed(frozen)...)
+	}
+	if !reflect.DeepEqual(kinds(evs), []string{"save", "goal"}) || *evs[1].GameTime != 249 {
 		t.Fatalf("got %+v", evs)
 	}
 	// The same player saving again at a different clock is a new event.
@@ -209,7 +216,10 @@ func TestReplayGoalsIgnored(t *testing.T) {
 		t.Fatalf("during bReplay: %+v", evs)
 	}
 	p.Feed(updateState("G", 250, false))
-	if evs := p.Feed(goalScored("G", "A", 0)); !reflect.DeepEqual(kinds(evs), []string{"goal"}) {
+	if evs := p.Feed(goalScored("G", "A", 0)); len(evs) != 0 {
+		t.Fatalf("goal before the next clock reading: %+v", evs)
+	}
+	if evs := p.Feed(updateState("G", 249, false)); !reflect.DeepEqual(kinds(evs), []string{"goal"}) {
 		t.Fatalf("live goal: %+v", evs)
 	}
 }
@@ -240,8 +250,9 @@ func TestOvertimeClock(t *testing.T) {
 	p := startedParser(t)
 	p.Feed(envelope("UpdateState", map[string]any{"MatchGuid": "G", "Players": []any{},
 		"Game": map[string]any{"TimeSeconds": 12, "bOvertime": true}}))
-	evs := p.Feed(goalScored("G", "A", 0))
-	if len(evs) != 1 || *evs[0].GameTime != 10012 {
+	p.Feed(goalScored("G", "A", 0))
+	evs := p.Feed(envelope("ClockUpdatedSeconds", map[string]any{"MatchGuid": "G", "TimeSeconds": 13})) // no bOvertime: stays in overtime
+	if len(evs) != 1 || *evs[0].GameTime != 10013 {
 		t.Fatalf("overtime goal: %+v", evs)
 	}
 }
@@ -261,7 +272,8 @@ func TestMatchStartWaitsForLiveMatch(t *testing.T) {
 	// A stat before any match_start forces the match_start first.
 	q := newTestParser()
 	q.Feed(updateState("H", 300, false, model.PlayerRef{Name: "A", Team: 0}))
-	evs = q.Feed(goalScored("H", "A", 0))
+	q.Feed(goalScored("H", "A", 0))
+	evs = q.Feed(updateState("H", 300, false, model.PlayerRef{Name: "A", Team: 0}))
 	if !reflect.DeepEqual(kinds(evs), []string{"match_start", "goal"}) {
 		t.Fatalf("forced start: %+v", evs)
 	}
@@ -279,5 +291,101 @@ func TestMalformedMessagesIgnored(t *testing.T) {
 	evs := p.Feed(json.RawMessage(`{"Event":"UpdateState","Data":{"MatchGuid":"G","Players":[{"Name":"A","TeamNum":0}],"Game":{"TimeSeconds":300}}}`))
 	if len(evs) != 1 || evs[0].Kind != "match_start" {
 		t.Fatalf("object data: %+v", evs)
+	}
+}
+
+// sampled keeps only the UpdateStates with index%2 == phase, like two helpers
+// whose 20 Hz samples land at different moments.
+func sampled(msgs []json.RawMessage, phase int) []json.RawMessage {
+	var out []json.RawMessage
+	k := 0
+	for _, m := range msgs {
+		if strings.Contains(string(m), `"Event":"UpdateState"`) {
+			k++
+			if k%2 != phase {
+				continue
+			}
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func goalTimes(evs []model.Event) []float64 {
+	var ts []float64
+	for _, e := range evs {
+		if e.Kind == "goal" {
+			ts = append(ts, *e.GameTime)
+		}
+	}
+	return ts
+}
+
+func TestGoalGameTimeSameAcrossHelpers(t *testing.T) {
+	msgs := fixtureMessages(t)
+	a := goalTimes(feedAll(newTestParser(), sampled(msgs, 0)))
+	b := goalTimes(feedAll(newTestParser(), sampled(msgs, 1)))
+	if !reflect.DeepEqual(a, []float64{288, 242, 156}) || !reflect.DeepEqual(a, b) {
+		t.Fatalf("phase 0 %v, phase 1 %v", a, b)
+	}
+
+	// Synthetic: one helper saw the 101 sample before the goal, the other
+	// only 102; both stamp the frozen post-goal clock.
+	pl := []model.PlayerRef{{Name: "A", Team: 0}, {Name: "B", Team: 1}}
+	run := func(before []float64) []float64 {
+		p := startedParser(t)
+		for _, c := range before {
+			p.Feed(updateState("G", c, false, pl...))
+		}
+		var evs []model.Event
+		evs = append(evs, p.Feed(goalScored("G", "A", 0))...)
+		evs = append(evs, p.Feed(updateState("G", 101, false, pl...))...)
+		evs = append(evs, p.Feed(updateState("G", 101, true, pl...))...)
+		return goalTimes(evs)
+	}
+	if x, y := run([]float64{103, 102, 101}), run([]float64{103, 102}); !reflect.DeepEqual(x, []float64{101}) || !reflect.DeepEqual(x, y) {
+		t.Fatalf("%v vs %v", x, y)
+	}
+}
+
+func TestBufferedGoalFlushedAtMatchEndAndNewGUID(t *testing.T) {
+	p := startedParser(t)
+	p.Feed(goalScored("G", "A", 0))
+	evs := p.Feed(envelope("MatchEnded", map[string]any{"MatchGuid": "G", "WinnerTeamNum": 0}))
+	if !reflect.DeepEqual(kinds(evs), []string{"goal", "match_end"}) || *evs[0].GameTime != 250 {
+		t.Fatalf("match ended: %+v", evs)
+	}
+
+	p = startedParser(t)
+	p.Feed(goalScored("G", "B", 1))
+	evs = p.Feed(envelope("MatchDestroyed", map[string]any{"MatchGuid": "G"}))
+	if !reflect.DeepEqual(kinds(evs), []string{"goal"}) || p.InMatch() {
+		t.Fatalf("match destroyed: %+v", evs)
+	}
+
+	p = startedParser(t)
+	p.Feed(goalScored("G", "A", 0))
+	evs = p.Feed(envelope("MatchCreated", map[string]any{"MatchGuid": "H"}))
+	if !reflect.DeepEqual(kinds(evs), []string{"goal"}) || evs[0].MatchGUID != "G" || *evs[0].GameTime != 250 {
+		t.Fatalf("new guid: %+v", evs)
+	}
+}
+
+func TestClockUpdatedSecondsOvertime(t *testing.T) {
+	p := startedParser(t)
+	clock := func(d map[string]any) {
+		d["MatchGuid"] = "G"
+		p.Feed(envelope("ClockUpdatedSeconds", d))
+	}
+	clock(map[string]any{"TimeSeconds": 5, "bOvertime": true})
+	clock(map[string]any{"TimeSeconds": 6}) // bOvertime absent: unchanged
+	evs := p.Feed(statfeed("G", "Save", map[string]any{"Name": "A", "TeamNum": 0}, nil))
+	if len(evs) != 1 || *evs[0].GameTime != 10006 {
+		t.Fatalf("overtime kept: %+v", evs)
+	}
+	clock(map[string]any{"TimeSeconds": 7, "bOvertime": false})
+	evs = p.Feed(statfeed("G", "Save", map[string]any{"Name": "A", "TeamNum": 0}, nil))
+	if len(evs) != 1 || *evs[0].GameTime != 7 {
+		t.Fatalf("overtime cleared: %+v", evs)
 	}
 }

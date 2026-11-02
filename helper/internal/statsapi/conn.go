@@ -22,7 +22,7 @@ import (
 
 // Variables so tests can shorten them.
 var (
-	sniffTimeout   = time.Second     // wait for the first byte of a raw TCP stream
+	sniffTimeout   = time.Second     // wait for the first byte on the raw TCP port
 	connectTimeout = 2 * time.Second // TCP connect / WebSocket handshake
 )
 
@@ -74,29 +74,37 @@ func connStream(c net.Conn, r io.Reader) *stream {
 
 var errNotJSON = errors.New("not a raw JSON stream")
 
-// Dial connects to the Stats API on host at the first answering port. On each
-// port it first tries raw TCP and sniffs the first byte (1 s): `{` means a raw
-// JSON stream; anything else (or silence) and it retries the port as a
-// WebSocket.
+// Dial connects to the Stats API on host. The first port is the raw TCP JSON
+// stream (49123): if the first byte within the sniff window is `{`, or
+// nothing arrives yet (RL sends nothing while idle in menus), the connection
+// is kept as raw JSON; any other first byte retries that port as a
+// WebSocket. The remaining ports (49124) are WebSocket-only and are tried
+// only when the first port refuses the connection.
 func Dial(ctx context.Context, host string, ports []int) (app.Stream, error) {
 	var errs []error
-	for _, port := range ports {
+	for i, port := range ports {
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
-		s, err := dialTCP(ctx, addr)
+		if i == 0 {
+			s, err := dialTCP(ctx, addr)
+			if err == nil {
+				return s, nil
+			}
+			errs = append(errs, err)
+			if ctx.Err() != nil {
+				break
+			}
+			if !errors.Is(err, errNotJSON) {
+				continue // refused: fall back to the WebSocket port(s)
+			}
+		}
+		s, err := dialWS(ctx, addr)
 		if err == nil {
 			return s, nil
 		}
 		errs = append(errs, err)
-		if ctx.Err() != nil {
-			break
+		if ctx.Err() != nil || i == 0 {
+			break // port 0 answered (as a WebSocket or not): don't try others
 		}
-		if !errors.Is(err, errNotJSON) {
-			continue // nothing listening: a WebSocket would fail too
-		}
-		if s, err = dialWS(ctx, addr); err == nil {
-			return s, nil
-		}
-		errs = append(errs, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -113,8 +121,16 @@ func dialTCP(ctx context.Context, addr string) (*stream, error) {
 	c.SetReadDeadline(time.Now().Add(sniffTimeout))
 	br := bufio.NewReader(c)
 	first, err := br.Peek(1)
-	if err != nil || first[0] != '{' {
+	var ne net.Error
+	switch {
+	case err == nil && first[0] == '{':
+	case err != nil && errors.As(err, &ne) && ne.Timeout():
+		// Silence: the proven raw TCP port, idle until a match starts.
+	default:
 		c.Close()
+		if err != nil {
+			return nil, fmt.Errorf("tcp %s: %w", addr, err)
+		}
 		return nil, fmt.Errorf("tcp %s: %w", addr, errNotJSON)
 	}
 	c.SetReadDeadline(time.Time{})

@@ -80,7 +80,9 @@ func run() int {
 	args := os.Args[1:]
 
 	if *replay != "" {
-		return runReplay(*base, *replay)
+		baseSet := false
+		flag.Visit(func(f *flag.Flag) { baseSet = baseSet || f.Name == "base-url" })
+		return runReplay(*base, baseSet, *replay)
 	}
 
 	if *patchIni != "" {

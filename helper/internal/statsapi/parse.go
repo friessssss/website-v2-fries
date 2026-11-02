@@ -37,6 +37,9 @@ type Parser struct {
 	teams     map[string]int
 	score     map[string]int
 	seen      map[string]bool
+	// goal waits for the first clock reading after GoalScored: the clock is
+	// frozen from the goal until kickoff, so every helper stamps the same value.
+	goal *model.Event
 }
 
 // NewParser returns a Parser using the wall clock, as an app.Source.
@@ -75,7 +78,7 @@ type message struct {
 	} `json:"Game"`
 	// ClockUpdatedSeconds (shape assumed; dropped from the fixture).
 	TimeSeconds *float64 `json:"TimeSeconds"`
-	Overtime    bool     `json:"bOvertime"`
+	Overtime    *bool    `json:"bOvertime"`
 	// GoalScored
 	Scorer *target `json:"Scorer"`
 	// StatfeedEvent
@@ -116,17 +119,25 @@ func (p *Parser) Feed(raw json.RawMessage) []model.Event {
 	if !ok || m.MatchGuid == "" {
 		return nil
 	}
+	var out []model.Event
 	if m.MatchGuid != p.guid {
+		out = p.flushGoal(out)
 		p.reset(m.MatchGuid) // new match (or RL restarted): fresh dedupe set
 	}
-	var out []model.Event
 	switch name {
 	case "UpdateState":
-		p.updateState(m)
+		clocked := p.updateState(m)
 		out = p.maybeStart(out)
+		if clocked {
+			out = p.flushGoal(out)
+		}
 	case "ClockUpdatedSeconds":
 		if m.TimeSeconds != nil {
-			p.clock, p.overtime, p.haveClock = *m.TimeSeconds, m.Overtime, true
+			p.clock, p.haveClock = *m.TimeSeconds, true
+			if m.Overtime != nil {
+				p.overtime = *m.Overtime
+			}
+			out = p.flushGoal(out)
 		}
 	case "MatchInitialized", "CountdownBegin", "RoundStarted":
 		p.live = true
@@ -141,12 +152,16 @@ func (p *Parser) Feed(raw json.RawMessage) []model.Event {
 	case "GoalScored":
 		// RL repeats GoalScored during the replay with an empty scorer.
 		if p.replay || m.Scorer == nil || m.Scorer.Name == "" {
-			return nil
+			break
 		}
-		out = p.stat(out, model.Event{Kind: "goal", Scorer: p.ref(m.Scorer)})
+		if p.goal != nil && p.goal.Scorer.Name == m.Scorer.Name {
+			break // repeated before any clock reading
+		}
+		out = p.flushGoal(out)
+		p.goal = &model.Event{Kind: "goal", Scorer: p.ref(m.Scorer)}
 	case "StatfeedEvent":
 		if m.MainTarget == nil || m.MainTarget.Name == "" {
-			return nil
+			break
 		}
 		switch m.EventName {
 		case "Assist":
@@ -155,12 +170,13 @@ func (p *Parser) Feed(raw json.RawMessage) []model.Event {
 			out = p.stat(out, model.Event{Kind: "save", Player: p.ref(m.MainTarget)})
 		case "Demolish":
 			if m.SecondaryTarget == nil || m.SecondaryTarget.Name == "" {
-				return nil
+				break
 			}
 			out = p.stat(out, model.Event{Kind: "demo", Attacker: p.ref(m.MainTarget), Victim: p.ref(m.SecondaryTarget)})
 		}
 		// Goal comes from GoalScored; Shot, Win, LongGoal etc. are ignored.
 	case "MatchEnded":
+		out = p.flushGoal(out)
 		if !p.sentEnd {
 			out = p.ensureStart(out)
 			p.sentEnd = true
@@ -172,12 +188,25 @@ func (p *Parser) Feed(raw json.RawMessage) []model.Event {
 		}
 		p.inMatch = false
 	case "MatchDestroyed":
+		out = p.flushGoal(out)
 		p.inMatch = false
 	}
 	return out
 }
 
-func (p *Parser) updateState(m *message) {
+// flushGoal emits a buffered goal stamped with the current clock.
+func (p *Parser) flushGoal(out []model.Event) []model.Event {
+	if p.goal == nil {
+		return out
+	}
+	e := *p.goal
+	p.goal = nil
+	return p.stat(out, e)
+}
+
+// updateState records roster, scores and clock; it reports whether the
+// message carried a clock reading.
+func (p *Parser) updateState(m *message) bool {
 	if len(m.Players) > 0 {
 		p.players = p.players[:0]
 		for _, pl := range m.Players {
@@ -190,7 +219,7 @@ func (p *Parser) updateState(m *message) {
 	}
 	g := m.Game
 	if g == nil {
-		return
+		return false
 	}
 	p.replay = g.Replay
 	if len(g.Teams) > 0 {
@@ -208,6 +237,7 @@ func (p *Parser) updateState(m *message) {
 			p.live = true // the clock is running: we joined mid-match
 		}
 	}
+	return g.TimeSeconds != nil
 }
 
 // maybeStart emits match_start once the match is live and players are known,

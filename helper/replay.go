@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,9 +46,14 @@ func (s *eofStream) Close() error { return s.Stream.(io.Closer).Close() }
 
 // runReplay feeds a capture file through the normal parser, queue and
 // uploader (with the stored API key) against base, then exits once the queue
-// has drained. It uses its own temporary queue, not the live one.
-func runReplay(base, path string) int {
+// has drained. It uses its own temporary queue, not the live one. baseSet
+// says whether --base-url was passed: replays never go to the real site.
+func runReplay(base string, baseSet bool, path string) int {
 	logf := func(format string, args ...any) { fmt.Fprintf(os.Stderr, "replay: "+format+"\n", args...) }
+	if !baseSet || strings.TrimRight(base, "/") == strings.TrimRight(baseURL, "/") {
+		logf("refusing to replay into %s: pass --base-url with a test server (not the live site)", base)
+		return 1
+	}
 	key, err := loadKey()
 	if err != nil || key == "" {
 		logf("no stored API key (pair the helper first): %v", err)
@@ -72,6 +78,8 @@ func runReplay(base, path string) int {
 	site := setup.NewSite(api.Client{BaseURL: base, Version: version})
 	site.SetKey(key)
 
+	rejected := make(chan struct{}) // closed when the site rejects the key
+	var unauthorized sync.Once
 	src := &eofStream{Stream: fs, done: make(chan struct{})}
 	var dialed sync.Once
 	ctx, cancel := context.WithCancel(context.Background())
@@ -89,20 +97,42 @@ func runReplay(base, path string) int {
 		NewSource: statsapi.NewParser,
 		Poster:    site,
 		Queue:     q,
-		OnState:   func(s app.State) { logf("state %s", s) },
-		Logf:      logf,
+		OnState: func(s app.State) {
+			logf("state %s", s)
+			if s == app.NeedsPair {
+				unauthorized.Do(func() { close(rejected) })
+			}
+		},
+		Logf: logf,
 	})
 	appDone := make(chan struct{})
 	go func() { a.Run(ctx); close(appDone) }()
 
-	<-src.done // Feed results are queued before the EOF is returned
-	deadline := time.Now().Add(replayDrainWait)
-	for q.Len() > 0 && time.Now().Before(deadline) {
-		time.Sleep(200 * time.Millisecond)
+	stop := func() { cancel(); <-appDone }
+	timeout := time.After(replayDrainWait)
+	select {
+	case <-src.done: // Feed results are queued before the EOF is returned
+	case <-rejected:
+		stop()
+		logf("the site rejected the API key (pair the helper again)")
+		return 1
+	}
+	tick := time.NewTicker(200 * time.Millisecond)
+	defer tick.Stop()
+wait:
+	for q.Len() > 0 {
+		select {
+		case <-rejected:
+			stop()
+			logf("the site rejected the API key (pair the helper again)")
+			return 1
+		case <-timeout:
+			break wait
+		case <-tick.C:
+		}
 	}
 	left := q.Len()
-	cancel()
-	<-appDone
+	stop()
 	if left > 0 {
 		logf("%d events not uploaded after %v", left, replayDrainWait)
 		return 1

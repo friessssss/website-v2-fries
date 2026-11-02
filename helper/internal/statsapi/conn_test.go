@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,8 +104,8 @@ func TestDialWebSocket(t *testing.T) {
 		c.Close(websocket.StatusNormalClosure, "")
 	}))
 	defer srv.Close()
-	// First port refuses connections; the second is a WebSocket server that
-	// sends nothing until the handshake, so the TCP sniff times out.
+	// The first (raw TCP) port refuses connections, so the second port is
+	// dialled as a WebSocket.
 	dead, _ := net.Listen("tcp", "127.0.0.1:0")
 	deadPort := portOf(t, dead.Addr().String())
 	dead.Close()
@@ -196,5 +197,110 @@ func TestFixtureThroughOpenFile(t *testing.T) {
 	}
 	if n != 7 {
 		t.Fatalf("%d events, want 7", n)
+	}
+}
+
+func TestDialSilentTCPKeptAsRawJSON(t *testing.T) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ln.Close()
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		time.Sleep(2 * sniffTimeout) // RL idle in menus: nothing at first
+		c.Write([]byte(`{"Event":"A"}{"Event":"B"}`))
+		c.Close()
+	}()
+	// A second port that would fail loudly if it were tried.
+	ws, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ws.Close()
+	tried := make(chan struct{}, 1)
+	go func() {
+		if c, err := ws.Accept(); err == nil {
+			tried <- struct{}{}
+			c.Close()
+		}
+	}()
+	ctx := context.Background()
+	s, err := Dial(ctx, "127.0.0.1", []int{portOf(t, ln.Addr().String()), portOf(t, ws.Addr().String())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.(io.Closer).Close()
+	got := collect(t, ctx, func(ctx context.Context) (string, error) { r, err := s.Next(ctx); return string(r), err })
+	if strings.Join(got, "|") != `{"Event":"A"}|{"Event":"B"}` {
+		t.Fatalf("got %q", got)
+	}
+	select {
+	case <-tried:
+		t.Fatal("second port dialled although the first accepted")
+	default:
+	}
+}
+
+// chanListener hands accepted connections to an http.Server.
+type chanListener struct {
+	addr net.Addr
+	ch   chan net.Conn
+	done chan struct{}
+	once sync.Once
+}
+
+func (l *chanListener) Accept() (net.Conn, error) {
+	select {
+	case c := <-l.ch:
+		return c, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+func (l *chanListener) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
+func (l *chanListener) Addr() net.Addr { return l.addr }
+
+func TestDialNonJSONFirstByteSwitchesToWebSocket(t *testing.T) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ln.Close()
+	cl := &chanListener{addr: ln.Addr(), ch: make(chan net.Conn), done: make(chan struct{})}
+	go func() {
+		first := true
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			if first { // the raw TCP sniff sees a non-JSON byte
+				first = false
+				c.Write([]byte("HELLO"))
+				c.Close()
+				continue
+			}
+			select {
+			case cl.ch <- c:
+			case <-cl.done:
+				c.Close()
+				return
+			}
+		}
+	}()
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		c.Write(r.Context(), websocket.MessageText, []byte(`{"Event":"W"}`))
+		c.Close(websocket.StatusNormalClosure, "")
+	})}
+	go srv.Serve(cl)
+	defer srv.Close()
+	ctx := context.Background()
+	s, err := Dial(ctx, "127.0.0.1", []int{portOf(t, ln.Addr().String())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.(io.Closer).Close()
+	got := collect(t, ctx, func(ctx context.Context) (string, error) { r, err := s.Next(ctx); return string(r), err })
+	if strings.Join(got, "|") != `{"Event":"W"}` {
+		t.Fatalf("got %q", got)
 	}
 }
