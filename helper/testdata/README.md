@@ -2,13 +2,35 @@
 
 ## How to capture (on the gaming PC)
 
-1. Find the Stats API ini in the Rocket League install folder:
-   `<RL install>\TAGame\Config\TAStatsAPI.ini` (if it exists), otherwise `DefaultStatsAPI.ini` in the same folder.
-2. In section `[TAGame.MatchStatsExporter_TA]` set `PacketSendRate=20` (by hand). Restart Rocket League.
-3. Run `rlcapture.exe` (default port 49123, writes `capture-<timestamp>.bin` in the current directory). Stderr shows connect/disconnect lines; Ctrl+C stops cleanly and flushes the file.
-4. Play one online match. Include a goal, an assist, a save, and a demo if possible.
-5. Run `rlcapture.exe -port 49124 -ws` briefly for a WebSocket capture (messages are separated by `\n\x1e\n`).
-6. Rename the outputs to `match-tcp.bin` and `match-ws.bin` and place them in `helper/testdata/`.
+### 0. Get rlcapture.exe
+Install Go from https://go.dev/dl/ . Open the repo's `helper` folder in File Explorer, click the address bar, type `cmd` and press Enter (this opens a terminal in that folder). Run:
+
+    go build -o rlcapture.exe ./cmd/rlcapture
+
+Windows may show a SmartScreen or Defender prompt when you first run `rlcapture.exe`; choose "More info" then "Run anyway". The exe is a local build of the code in this repo.
+
+Run it the same way each time: open a terminal in the folder where you want the files (File Explorer address bar, type `cmd`, Enter). `capture-<timestamp>.bin` files land in the folder you ran it from. Ctrl+C stops it cleanly; it prints `rlcapture: stopped, file flushed: <file>`.
+
+### 1. Enable the Stats API
+1. Find the Rocket League config folder:
+   - Steam: `C:\Program Files (x86)\Steam\steamapps\common\rocketleague\TAGame\Config\`
+   - Epic: `C:\Program Files\Epic Games\rocketleague\TAGame\Config\`
+   (Other drive or library: look for `rocketleague\TAGame\Config`.)
+2. Use `TAStatsAPI.ini` if it exists, otherwise `DefaultStatsAPI.ini`. Copy the file first as a backup (e.g. `TAStatsAPI.ini.bak`). Note which one you used.
+3. Under the section `[TAGame.MatchStatsExporter_TA]` set `PacketSendRate=20`. If the section or the `PacketSendRate` line is missing, add them. You may need to edit as administrator (open Notepad as administrator).
+4. Fully quit Rocket League (including the launcher/Epic/Steam overlay game process) and start it again.
+
+### 2. Capture a match over TCP
+Run `rlcapture.exe` (port 49123). Until RL is running it prints `waiting for Rocket League`; once in a match it prints `connected (tcp)` and JSON scrolls by. Play one online match: score a goal, and get an assist, a save, and a demo if possible. Press Ctrl+C when done.
+
+### 3. Does 49123 answer as a WebSocket?
+During a match (about 10 seconds is enough) run `rlcapture.exe -ws` (default port 49123). Note whether it printed `connected (websocket)` and whether the `.bin` file has data. Ctrl+C to stop.
+
+### 4. WebSocket on 49124
+Run `rlcapture.exe -port 49124 -ws -out ws.bin` for about 10 seconds during a match; note whether it connects. Messages in this file are separated by `\n\x1e\n`.
+
+### 5. Hand back the files
+Rename the best TCP capture to `match-tcp.bin` and the WebSocket capture to `match-ws.bin`, and put them in `helper/testdata/`. Fill in the Findings sections below. Then either commit and push them to the branch, or send the files to Claude in the chat.
 
 ## Findings
 

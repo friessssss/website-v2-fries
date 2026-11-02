@@ -21,8 +21,30 @@ const frameSep = "\n\x1e\n"
 
 // tee copies r to both writers unchanged until EOF or error.
 func tee(r io.Reader, file, out io.Writer) (int64, error) {
-	return io.Copy(io.MultiWriter(file, out), r)
+	return io.Copy(io.MultiWriter(&failWriter{file}, out), r)
 }
+
+// writeError marks a failure writing to an output (as opposed to a network
+// failure), so the caller can abort instead of retrying.
+type writeError struct{ err error }
+
+func (e *writeError) Error() string { return "write failed: " + e.err.Error() }
+func (e *writeError) Unwrap() error { return e.err }
+
+type failWriter struct{ w io.Writer }
+
+func (f *failWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	if err != nil {
+		err = &writeError{err}
+	}
+	return n, err
+}
+
+// quietWriter drops errors (e.g. a closed console) so stdout never aborts a capture.
+type quietWriter struct{ w io.Writer }
+
+func (q quietWriter) Write(p []byte) (int, error) { q.w.Write(p); return len(p), nil }
 
 // writeFramed writes one WebSocket message followed by the separator.
 func writeFramed(w io.Writer, msg []byte) error {
@@ -49,7 +71,7 @@ func readWS(ctx context.Context, conn *websocket.Conn, outs ...io.Writer) error 
 		}
 		for _, w := range outs {
 			if err := writeFramed(w, msg); err != nil {
-				return err
+				return &writeError{err}
 			}
 		}
 	}
@@ -78,16 +100,29 @@ func main() {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(*port))
 	fmt.Fprintf(os.Stderr, "rlcapture: writing to %s, target %s (ws=%v). Ctrl+C to stop.\n", name, addr, *ws)
 
+	waitingShown := false
 	for ctx.Err() == nil {
-		err := capture(ctx, addr, *ws, f)
+		connected, err := capture(ctx, addr, *ws, f)
 		_ = f.Sync()
 		if ctx.Err() != nil {
 			break
 		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "rlcapture: disconnected:", err)
-		} else {
-			fmt.Fprintln(os.Stderr, "rlcapture: disconnected")
+		var we *writeError
+		if errors.As(err, &we) {
+			fmt.Fprintf(os.Stderr, "rlcapture: ABORTING, cannot write %s: %v\n", name, we.err)
+			f.Close()
+			os.Exit(1)
+		}
+		if connected {
+			waitingShown = false
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "rlcapture: disconnected:", err)
+			} else {
+				fmt.Fprintln(os.Stderr, "rlcapture: disconnected")
+			}
+		} else if !waitingShown {
+			waitingShown = true
+			fmt.Fprintln(os.Stderr, "rlcapture: waiting for Rocket League (not connected) - retrying every 5s")
 		}
 		select {
 		case <-ctx.Done():
@@ -98,22 +133,24 @@ func main() {
 	fmt.Fprintln(os.Stderr, "rlcapture: stopped, file flushed:", name)
 }
 
-// capture makes one connection attempt and streams until it ends.
-func capture(ctx context.Context, addr string, ws bool, f *os.File) error {
+// capture makes one connection attempt and streams until it ends. connected
+// reports whether the connection was established.
+func capture(ctx context.Context, addr string, ws bool, f *os.File) (connected bool, err error) {
+	out := quietWriter{os.Stdout}
 	if ws {
 		dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		conn, _, err := websocket.Dial(dctx, "ws://"+addr, nil)
 		cancel()
 		if err != nil {
-			return err
+			return false, err
 		}
 		fmt.Fprintln(os.Stderr, "rlcapture: connected (websocket)")
-		return readWS(ctx, conn, f, os.Stdout)
+		return true, readWS(ctx, conn, f, out)
 	}
 	d := net.Dialer{Timeout: 5 * time.Second}
 	c, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer c.Close()
 	fmt.Fprintln(os.Stderr, "rlcapture: connected (tcp)")
@@ -126,9 +163,9 @@ func capture(ctx context.Context, addr string, ws bool, f *os.File) error {
 		case <-done:
 		}
 	}()
-	_, err = tee(c, f, os.Stdout)
+	_, err = tee(c, f, out)
 	if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-		return nil
+		return true, nil
 	}
-	return err
+	return true, err
 }
