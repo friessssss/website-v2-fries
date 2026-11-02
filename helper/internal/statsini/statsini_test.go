@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,7 +26,17 @@ func (m memFS) ReadFile(p string) ([]byte, error) {
 	return nil, errors.New("not found")
 }
 func (m memFS) WriteFile(p string, b []byte) error { m[p] = append([]byte(nil), b...); return nil }
-func (m memFS) Exists(p string) bool               { _, ok := m[p]; return ok }
+func (m memFS) Exists(p string) (bool, error)      { _, ok := m[p]; return ok, nil }
+func (m memFS) Remove(p string) error              { delete(m, p); return nil }
+func (m memFS) Rename(from, to string) error {
+	b, ok := m[from]
+	if !ok {
+		return errors.New("rename: missing source")
+	}
+	m[to] = b
+	delete(m, from)
+	return nil
+}
 
 func TestPatchCRLFZero(t *testing.T) {
 	in := fixture(t, "crlf_zero.ini")
@@ -147,5 +158,90 @@ func TestApplyNeverOverwritesBackup(t *testing.T) {
 func TestApplyMissingFile(t *testing.T) {
 	if _, err := Apply("nope.ini", memFS{}); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestPatchHeaderInlineComment(t *testing.T) {
+	out, changed := Patch([]byte("[TAGame.MatchStatsExporter_TA] ; stats\nPacketSendRate=0\n"))
+	want := "[TAGame.MatchStatsExporter_TA] ; stats\nPacketSendRate=20\n"
+	if !changed || string(out) != want {
+		t.Fatalf("got %q", out)
+	}
+}
+
+func TestPatchUnsupportedEncoding(t *testing.T) {
+	for _, in := range [][]byte{
+		{0xFF, 0xFE, '[', 0, 'A', 0, ']', 0},
+		{0xFE, 0xFF, 0, '[', 0, 'A', 0, ']'},
+		[]byte("[A]\nx=\x00\n"),
+	} {
+		out, changed := Patch(in)
+		if changed || string(out) != string(in) {
+			t.Fatalf("Patch touched %q", in)
+		}
+		fs := memFS{"x.ini": in}
+		changed, err := Apply("x.ini", fs)
+		if !errors.Is(err, ErrUnsupportedEncoding) || changed {
+			t.Fatalf("Apply: %v %v", changed, err)
+		}
+		if len(fs) != 1 || string(fs["x.ini"]) != string(in) {
+			t.Fatal("Apply wrote something")
+		}
+	}
+}
+
+type errFS struct {
+	memFS
+	err error
+}
+
+func (e errFS) Exists(string) (bool, error) { return false, e.err }
+
+func TestApplyExistsErrorPropagates(t *testing.T) {
+	boom := errors.New("access denied")
+	fs := errFS{memFS{"x.ini": []byte("[A]\n")}, boom}
+	changed, err := Apply("x.ini", fs)
+	if !errors.Is(err, boom) || changed {
+		t.Fatalf("%v %v", changed, err)
+	}
+	if string(fs.memFS["x.ini"]) != "[A]\n" || len(fs.memFS) != 1 {
+		t.Fatal("wrote despite error")
+	}
+}
+
+func TestOSFSAtomicApply(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "TAStatsAPI.ini")
+	orig := fixture(t, "crlf_zero.ini")
+	if err := os.WriteFile(path, orig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := Apply(path, OSFS{})
+	if err != nil || !changed {
+		t.Fatalf("%v %v", changed, err)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "PacketSendRate=20\r\n") {
+		t.Fatalf("not patched: %q", got)
+	}
+	bak, err := os.ReadFile(path + ".rltracker.bak")
+	if err != nil || string(bak) != string(orig) {
+		t.Fatalf("backup: %v %q", err, bak)
+	}
+	if changed, err = Apply(path, OSFS{}); err != nil || changed {
+		t.Fatalf("second: %v %v", changed, err)
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Fatalf("leftover %s", e.Name())
+		}
+	}
+	if len(entries) != 2 {
+		t.Fatalf("unexpected files: %v", entries)
+	}
+	// OSFS.Exists distinguishes absence from success
+	if ok, err := (OSFS{}).Exists(filepath.Join(dir, "nope")); ok || err != nil {
+		t.Fatalf("exists: %v %v", ok, err)
 	}
 }
