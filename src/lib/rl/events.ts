@@ -4,20 +4,24 @@ import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch, inferOurTe
 import { normalizeName, songKey } from './normalize';
 import { addAlias, listPlayers, resolveActor } from './players';
 import { currentSessionId, resolveSessionId } from './sessions';
-import type { Actor, Clock, EventDoc, EventType, PlayerDoc, Track } from './types';
+import type { Actor, Clock, EventDoc, EventType, LocalSong, PlayerDoc, SongMeta, Track } from './types';
 
 export type NowPlaying = () => Promise<{ track: Track; hostSlug: string } | null>;
+/** Spotify catalogue metadata for a helper-reported song; null when unknown. */
+export type SongMetaLookup = (title: string, artist: string) => Promise<SongMeta | null>;
 
 type InGame = { name: string; team?: number };
 type Base = { matchGuid: string; at: string };
+/** Optional on stat events and heartbeats: the song playing on the helper's PC at event time. */
+type WithSong = { song?: LocalSong };
 
 export type HelperEvent =
   | (Base & { kind: 'match_start'; players: { name: string; team: number }[] })
-  | (Base & { kind: 'goal'; gameTime: number; scorer: InGame; assister?: InGame })
-  | (Base & { kind: 'assist'; gameTime: number; player: InGame })
-  | (Base & { kind: 'save'; gameTime: number; player: InGame })
-  | (Base & { kind: 'demo'; gameTime: number; attacker: InGame; victim: InGame })
-  | (Base & { kind: 'heartbeat' })
+  | (Base & WithSong & { kind: 'goal'; gameTime: number; scorer: InGame; assister?: InGame })
+  | (Base & WithSong & { kind: 'assist'; gameTime: number; player: InGame })
+  | (Base & WithSong & { kind: 'save'; gameTime: number; player: InGame })
+  | (Base & WithSong & { kind: 'demo'; gameTime: number; attacker: InGame; victim: InGame })
+  | (Base & WithSong & { kind: 'heartbeat' })
   | (Base & { kind: 'match_end'; score: Record<string, number> });
 
 export type IngestResult = {
@@ -41,6 +45,7 @@ const MAX_BATCH = 50;
 const LATE_MS = 120_000;
 const MANUAL_MERGE_MS = 30_000;
 const CLOCK_SKEW_S = 1.0;
+const SONG_FIELD_MAX = 200;
 
 export function dedupeKey(e: {
   matchGuid: string;
@@ -85,9 +90,30 @@ function validEvent(e: unknown): e is HelperEvent {
   }
 }
 
+/**
+ * The helper's `song`, cleaned: trimmed, title and artist cut to 200 characters. Undefined (the field
+ * is dropped) when it is malformed, has no title or another source. A bad song never rejects an event.
+ */
+export function cleanLocalSong(v: unknown): LocalSong | undefined {
+  if (!isObj(v) || v.source !== 'local' || typeof v.title !== 'string') return undefined;
+  const title = v.title.trim().slice(0, SONG_FIELD_MAX).trim();
+  if (title === '') return undefined;
+  const artist = typeof v.artist === 'string' ? v.artist.trim().slice(0, SONG_FIELD_MAX).trim() : '';
+  return { title, artist, source: 'local' };
+}
+
+/** Copies the event with its `song` cleaned (or removed); only stat events and heartbeats keep one. */
+function withCleanSong(e: unknown): unknown {
+  if (!isObj(e) || !('song' in e)) return e;
+  const { song, ...rest } = e;
+  const keeps = ['goal', 'assist', 'save', 'demo', 'heartbeat'].includes(rest.kind as string);
+  const clean = keeps ? cleanLocalSong(song) : undefined;
+  return clean ? { ...rest, song: clean } : rest;
+}
+
 // ---- ingest ----
 
-type Deps = { nowPlaying: NowPlaying; clock: Clock };
+type Deps = { nowPlaying: NowPlaying; clock: Clock; songMeta?: SongMetaLookup };
 
 function display(roster: PlayerDoc[], actor: Actor): string {
   if (actor === 'opponent') return 'Opponent';
@@ -121,7 +147,8 @@ export async function ingestBatch(
 ): Promise<IngestResult[]> {
   if (!isObj(body) || !isDate(body.sentAt) || !Array.isArray(body.events)) throw new IngestError('bad_event');
   if (body.events.length > MAX_BATCH) throw new IngestError('too_many');
-  body.events.forEach((e, i) => {
+  const batch = (body.events as unknown[]).map(withCleanSong);
+  batch.forEach((e, i) => {
     if (!validEvent(e)) throw new IngestError('bad_event', i);
   });
 
@@ -142,13 +169,46 @@ export async function ingestBatch(
     return track;
   };
 
+  // The helper's song for an event, with Spotify metadata when search finds it (once per song per batch).
+  const localTracks = new Map<string, Promise<Track>>();
+  const localTrack = (s: LocalSong): Promise<Track> => {
+    const k = `${s.title}\u0000${s.artist}`;
+    let p = localTracks.get(k);
+    if (!p) {
+      p = (async () => {
+        let meta: SongMeta | null = null;
+        try {
+          meta = deps.songMeta ? await deps.songMeta(s.title, s.artist) : null;
+        } catch {
+          meta = null; // the helper's spelling is still worth keeping
+        }
+        return {
+          trackId: meta?.trackId ?? null,
+          song: meta?.song ?? s.title,
+          artist: meta?.artist ?? s.artist,
+          album: meta?.album ?? null,
+          albumArt: meta?.albumArt ?? null,
+          progressMs: null,
+          playlist: null,
+          playlistId: null,
+        };
+      })();
+      localTracks.set(k, p);
+    }
+    return p;
+  };
+
   const results: IngestResult[] = [];
-  for (const e of body.events) {
+  for (const e of batch as HelperEvent[]) {
     const lagMs = Math.max(0, sentAt - new Date(e.at).getTime());
     const late = lagMs > LATE_MS;
     const occurredAt = new Date(receivedAt.getTime() - lagMs);
     const sessionId = await resolveSessionId(db, occurredAt);
+    // (1) the Web API, unless the event is too late to trust it; (2) the helper's song, captured at
+    // event time (so also for late events); (3) unknown.
+    const helperSong = e.kind !== 'match_start' && e.kind !== 'match_end' ? e.song : undefined;
     const currentTrack = async () => (late ? null : lookup());
+    const eventTrack = async () => (await currentTrack()) ?? (helperSong ? localTrack(helperSong) : null);
     const lifecycle = { matchGuid: e.matchGuid, at: occurredAt, sessionId };
 
     if (e.kind === 'match_start') {
@@ -156,7 +216,7 @@ export async function ingestBatch(
       continue;
     }
     if (e.kind === 'heartbeat') {
-      results.push(await applyHeartbeat(db, currentTrack, lifecycle));
+      results.push(await applyHeartbeat(db, eventTrack, lifecycle));
       continue;
     }
     if (e.kind === 'match_end') {
@@ -195,7 +255,7 @@ export async function ingestBatch(
     );
     const resolve = (p: InGame) => resolveActor(roster, p, ourTeam);
     const actor = resolve(actorIn);
-    const t = await currentTrack();
+    const t = await eventTrack();
     const doc: EventDoc = {
       type,
       actor,
@@ -203,7 +263,7 @@ export async function ingestBatch(
       ...(targetIn && { target: resolve(targetIn), targetInGame: targetIn.name }),
       ...(assisterIn && { assister: resolve(assisterIn), assisterInGame: assisterIn.name }),
       ...trackFields(t),
-      songResolved: !late && t !== null,
+      songResolved: t !== null,
       occurredAt,
       sessionId,
       matchGuid: e.matchGuid,

@@ -16,6 +16,18 @@ export type Track = {
   playlistId: string | null;
 };
 
+/** A song the helper read on the PC (e.g. the Spotify window) when the event happened. */
+export type LocalSong = { title: string; artist: string; source: 'local' };
+
+/** A Spotify catalogue match for a song, found by search (see songMeta.ts). */
+export type SongMeta = {
+  trackId: string;
+  song: string;
+  artist: string;
+  album: string | null;
+  albumArt: string | null;
+};
+
 export interface PlayerDoc {
   _id?: ObjectId;
   slug: string;
