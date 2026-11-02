@@ -1,6 +1,6 @@
 import type { Db } from 'mongodb';
 import { collections } from './db';
-import { normalizeSong, songKey } from './normalize';
+import { firstArtist, normalizeFirstArtist, normalizeSong, songKey } from './normalize';
 import type { SongMeta } from './types';
 
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -93,7 +93,7 @@ async function search(title: string, artist: string, nowMs: number, timeoutMs: n
   const creds = credentials();
   if (!creds) return undefined;
   const accessToken = await appToken(creds.id, creds.secret, nowMs, timeoutMs);
-  const q = artist ? `track:${title} artist:${artist}` : `track:${title}`;
+  const q = `track:${title} artist:${firstArtist(artist)}`;
   const url = `${SEARCH_URL}?${new URLSearchParams({ type: 'track', limit: '5', q })}`;
   const res = await fetchImpl(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -112,7 +112,7 @@ async function search(title: string, artist: string, nowMs: number, timeoutMs: n
  * Spotify catalogue metadata (track id, canonical spelling, album, art) for a song known only by
  * title and artist, via Spotify Search with an app token. Cached in `songMeta` by songKey: hits for
  * 30 days, misses for 1 day. Never throws; null when unknown, unconfigured, failing or slower than
- * `timeoutMs`.
+ * `timeoutMs`. Without an artist there is no search: a title alone is too easy to match wrongly.
  */
 export async function resolveSongMeta(
   db: Db,
@@ -120,7 +120,7 @@ export async function resolveSongMeta(
   artist: string,
   { now = new Date(), timeoutMs = TIMEOUT_MS }: { now?: Date; timeoutMs?: number } = {},
 ): Promise<SongMeta | null> {
-  if (normalizeSong(title) === '') return null;
+  if (normalizeSong(title) === '' || normalizeFirstArtist(artist) === '') return null;
   const key = songKey(title, artist);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<null>((resolve) => {
@@ -158,8 +158,9 @@ const BACKFILL_LIMIT = 20;
  * Finds Spotify metadata for stored songs that never had a track id (legacy, imported, or reported
  * by the helper while search failed) and sets album, albumArt and trackId on their events that lack
  * a trackId. Song groups (by songKey) that already have a tracked event are skipped (the display uses
- * that one), as are songs whose miss is still cached. Most-played first, at most `limit` lookups per
- * run. Idempotent; only these three fields are written, so spellings and song keys never change.
+ * that one), as are songs without an artist and songs whose miss is still cached. Most-played first,
+ * at most `limit` lookups per run. Idempotent; only trackId and a missing album/albumArt are written
+ * (stored art is never replaced, nulls never written), so spellings and song keys never change.
  */
 export async function backfillSongArt(
   db: Db,
@@ -200,7 +201,7 @@ export async function backfillSongArt(
   let updated = 0;
   for (const g of groups) {
     if (lookups >= limit) break;
-    if (missed.has(g._id)) continue;
+    if (missed.has(g._id) || normalizeFirstArtist(g.artist ?? '') === '') continue;
     lookups++;
     let meta: SongMeta | null = null;
     try {
@@ -209,10 +210,11 @@ export async function backfillSongArt(
       meta = null;
     }
     if (!meta) continue;
-    const res = await c.events.updateMany(
-      { songKey: g._id, trackId: null },
-      { $set: { trackId: meta.trackId, album: meta.album, albumArt: meta.albumArt } },
-    );
+    // A pipeline update keeps any album or art an event already has ($literal: values are data).
+    const $set: Record<string, unknown> = { trackId: { $literal: meta.trackId } };
+    if (meta.album !== null) $set.album = { $ifNull: ['$album', { $literal: meta.album }] };
+    if (meta.albumArt !== null) $set.albumArt = { $ifNull: ['$albumArt', { $literal: meta.albumArt }] };
+    const res = await c.events.updateMany({ songKey: g._id, trackId: null }, [{ $set }]);
     updated += res.modifiedCount;
   }
   return { lookups, updated };

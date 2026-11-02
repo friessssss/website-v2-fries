@@ -31,10 +31,10 @@ const meta: SongMeta = {
 
 const localSong = { title: 'Local Song', artist: 'Local Artist', source: 'local' };
 
-function setup(np: Track | null, found: SongMeta | null = meta) {
+function setup(np: Track | null, found: SongMeta | null = meta, extra: { songLookupBudgetMs?: number } = {}) {
   const nowPlaying = vi.fn<NowPlaying>(async () => (np ? { track: np, hostSlug: 'ashton' } : null));
   const songMeta = vi.fn<SongMetaLookup>(async () => found);
-  return { nowPlaying, songMeta, deps: { nowPlaying, songMeta, clock: () => NOW }, key: new ObjectId() };
+  return { nowPlaying, songMeta, deps: { nowPlaying, songMeta, clock: () => NOW, ...extra }, key: new ObjectId() };
 }
 
 const goal = (over: Record<string, unknown> = {}): HelperEvent =>
@@ -85,6 +85,18 @@ describe('helper-reported (local) songs', () => {
       const ev = await event();
       expect(ev!.song).toBe('x'.repeat(200));
       expect(ev!.artist).toBe('y'.repeat(200));
+    });
+
+    it('never splits a surrogate pair when truncating', async () => {
+      await withMatch();
+      const { deps, songMeta, key } = setup(null, null);
+      const title = `${'x'.repeat(199)}\u{1F600}tail`; // the emoji spans UTF-16 units 200 and 201
+      const artist = `${'y'.repeat(198)}\u{1F3B5}\u{1F3B5}`; // units 199-200 and 201-202
+      await send(deps, [goal({ song: { title, artist, source: 'local' } })], key);
+      expect(songMeta).toHaveBeenCalledWith('x'.repeat(199), `${'y'.repeat(198)}\u{1F3B5}`);
+      const ev = await event();
+      expect(ev!.song).toBe('x'.repeat(199));
+      expect(ev!.artist).toBe(`${'y'.repeat(198)}\u{1F3B5}`);
     });
 
     it('accepts a missing or non-string artist as empty', async () => {
@@ -181,6 +193,59 @@ describe('helper-reported (local) songs', () => {
       const { deps, songMeta, key } = setup(null);
       await send(deps, [goal({ gameTime: 1, song: localSong }), goal({ gameTime: 2, song: localSong })], key);
       expect(songMeta).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('lookup budget and retries', () => {
+    const songN = (n: number) => ({ title: `Song ${n}`, artist: 'A', source: 'local' });
+    const hang = () => new Promise<never>(() => {});
+
+    it('a slow search stops after the per-batch budget; the rest keep the helper spelling', async () => {
+      await withMatch();
+      const { deps, songMeta, key } = setup(null, meta, { songLookupBudgetMs: 100 });
+      songMeta.mockImplementation(hang);
+      const started = Date.now();
+      const r = await send(deps, [1, 2, 3, 4].map((n) => goal({ gameTime: n * 10, song: songN(n) })), key);
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(r.map((x) => x.status)).toEqual(['recorded', 'recorded', 'recorded', 'recorded']);
+      const docs = await collections(db()).events.find({}).sort({ gameTime: 1 }).toArray();
+      expect(docs.map((d) => [d.song, d.trackId])).toEqual([
+        ['Song 1', null], ['Song 2', null], ['Song 3', null], ['Song 4', null],
+      ]);
+      // Once the budget is spent, no further lookups are started.
+      expect(songMeta.mock.calls.length).toBeLessThan(4);
+    });
+
+    it('the default budget is 3 s for the whole batch', async () => {
+      await withMatch();
+      const { deps, songMeta, key } = setup(null);
+      songMeta.mockImplementation(hang);
+      const started = Date.now();
+      await send(deps, [1, 2, 3].map((n) => goal({ gameTime: n * 10, song: songN(n) })), key);
+      const took = Date.now() - started;
+      expect(took).toBeGreaterThanOrEqual(2900);
+      expect(took).toBeLessThan(4000);
+      expect(songMeta).toHaveBeenCalledTimes(1);
+    }, 10_000);
+
+    it('a fast lookup within the budget still gets metadata', async () => {
+      await withMatch();
+      const { deps, key } = setup(null, meta, { songLookupBudgetMs: 1000 });
+      await send(deps, [goal({ song: localSong })], key);
+      expect((await event())!.trackId).toBe('sp1');
+    });
+
+    it('a retried batch (or a near-duplicate) makes no lookups', async () => {
+      await withMatch();
+      const { deps, songMeta, nowPlaying, key } = setup(null);
+      await send(deps, [goal({ song: localSong })], key);
+      expect(songMeta).toHaveBeenCalledTimes(1);
+      songMeta.mockClear();
+      nowPlaying.mockClear();
+      const retry = await send(deps, [goal({ song: localSong }), goal({ gameTime: 182.4 + 0.8, song: localSong })], key);
+      expect(retry.map((x) => x.status)).toEqual(['duplicate', 'duplicate']);
+      expect(songMeta).not.toHaveBeenCalled();
+      expect(nowPlaying).not.toHaveBeenCalled();
     });
   });
 

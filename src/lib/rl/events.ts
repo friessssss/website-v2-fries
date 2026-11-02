@@ -46,6 +46,8 @@ const LATE_MS = 120_000;
 const MANUAL_MERGE_MS = 30_000;
 const CLOCK_SKEW_S = 1.0;
 const SONG_FIELD_MAX = 200;
+/** Total time one batch may spend on Spotify Search; later songs keep the helper's spelling. */
+const SONG_LOOKUP_BUDGET_MS = 3000;
 
 export function dedupeKey(e: {
   matchGuid: string;
@@ -90,15 +92,23 @@ function validEvent(e: unknown): e is HelperEvent {
   }
 }
 
+/** At most SONG_FIELD_MAX UTF-16 units, never ending in half of a surrogate pair. */
+function cap(s: string): string {
+  if (s.length <= SONG_FIELD_MAX) return s;
+  const cut = s.slice(0, SONG_FIELD_MAX);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 /**
  * The helper's `song`, cleaned: trimmed, title and artist cut to 200 characters. Undefined (the field
  * is dropped) when it is malformed, has no title or another source. A bad song never rejects an event.
  */
 export function cleanLocalSong(v: unknown): LocalSong | undefined {
   if (!isObj(v) || v.source !== 'local' || typeof v.title !== 'string') return undefined;
-  const title = v.title.trim().slice(0, SONG_FIELD_MAX).trim();
+  const title = cap(v.title.trim()).trim();
   if (title === '') return undefined;
-  const artist = typeof v.artist === 'string' ? v.artist.trim().slice(0, SONG_FIELD_MAX).trim() : '';
+  const artist = typeof v.artist === 'string' ? cap(v.artist.trim()).trim() : '';
   return { title, artist, source: 'local' };
 }
 
@@ -113,7 +123,13 @@ function withCleanSong(e: unknown): unknown {
 
 // ---- ingest ----
 
-type Deps = { nowPlaying: NowPlaying; clock: Clock; songMeta?: SongMetaLookup };
+type Deps = {
+  nowPlaying: NowPlaying;
+  clock: Clock;
+  songMeta?: SongMetaLookup;
+  /** Total Spotify Search time per batch (default 3 s); tests shorten it. */
+  songLookupBudgetMs?: number;
+};
 
 function display(roster: PlayerDoc[], actor: Actor): string {
   if (actor === 'opponent') return 'Opponent';
@@ -169,6 +185,24 @@ export async function ingestBatch(
     return track;
   };
 
+  // Search time is capped per batch so a slow Spotify cannot push the upload past the helper's
+  // timeout; once spent, songs keep the helper's spelling (the art backfill fills them in later).
+  let budgetLeft = deps.songLookupBudgetMs ?? SONG_LOOKUP_BUDGET_MS;
+  const budgetedMeta = async (s: LocalSong): Promise<SongMeta | null> => {
+    if (!deps.songMeta || budgetLeft <= 0) return null;
+    const started = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outOfTime = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), budgetLeft);
+    });
+    try {
+      return await Promise.race([deps.songMeta(s.title, s.artist).catch(() => null), outOfTime]);
+    } finally {
+      clearTimeout(timer);
+      budgetLeft -= Date.now() - started;
+    }
+  };
+
   // The helper's song for an event, with Spotify metadata when search finds it (once per song per batch).
   const localTracks = new Map<string, Promise<Track>>();
   const localTrack = (s: LocalSong): Promise<Track> => {
@@ -176,12 +210,8 @@ export async function ingestBatch(
     let p = localTracks.get(k);
     if (!p) {
       p = (async () => {
-        let meta: SongMeta | null = null;
-        try {
-          meta = deps.songMeta ? await deps.songMeta(s.title, s.artist) : null;
-        } catch {
-          meta = null; // the helper's spelling is still worth keeping
-        }
+        // A failed or slow lookup still keeps the helper's spelling.
+        const meta = await budgetedMeta(s);
         return {
           trackId: meta?.trackId ?? null,
           song: meta?.song ?? s.title,
@@ -255,6 +285,29 @@ export async function ingestBatch(
     );
     const resolve = (p: InGame) => resolveActor(roster, p, ourTeam);
     const actor = resolve(actorIn);
+
+    // Two helpers' sampled game clocks can differ by a second: treat a near-identical event as a duplicate.
+    // Checked before any song lookup, so retried batches and duplicates never call Spotify.
+    // Names are normalised in code (Mongo cannot), so only the cheap fields go in the query.
+    const actorKey = normalizeName(actorIn.name);
+    const targetKey = targetIn ? normalizeName(targetIn.name) : '';
+    const near = await events
+      .find({
+        matchGuid: e.matchGuid,
+        type,
+        gameTime: { $gte: e.gameTime - CLOCK_SKEW_S, $lte: e.gameTime + CLOCK_SKEW_S },
+      })
+      .toArray();
+    if (
+      near.some(
+        (n) =>
+          normalizeName(n.actorInGame ?? '') === actorKey && normalizeName(n.targetInGame ?? '') === targetKey,
+      )
+    ) {
+      results.push({ status: 'duplicate' });
+      continue;
+    }
+
     const t = await eventTrack();
     const doc: EventDoc = {
       type,
@@ -279,27 +332,6 @@ export async function ingestBatch(
       }),
       createdAt: receivedAt,
     };
-
-    // Two helpers' sampled game clocks can differ by a second: treat a near-identical event as a duplicate.
-    // Names are normalised in code (Mongo cannot), so only the cheap fields go in the query.
-    const actorKey = normalizeName(actorIn.name);
-    const targetKey = targetIn ? normalizeName(targetIn.name) : '';
-    const near = await events
-      .find({
-        matchGuid: e.matchGuid,
-        type,
-        gameTime: { $gte: e.gameTime - CLOCK_SKEW_S, $lte: e.gameTime + CLOCK_SKEW_S },
-      })
-      .toArray();
-    if (
-      near.some(
-        (n) =>
-          normalizeName(n.actorInGame ?? '') === actorKey && normalizeName(n.targetInGame ?? '') === targetKey,
-      )
-    ) {
-      results.push({ status: 'duplicate' });
-      continue;
-    }
 
     try {
       const { insertedId } = await events.insertOne(doc);

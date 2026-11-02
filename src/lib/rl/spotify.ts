@@ -5,8 +5,8 @@ import { decryptSecret, encryptSecret } from './crypto';
 import type { SpotifyAccountDoc, Track } from './types';
 
 const TIMEOUT_MS = 2500;
-/** Shorter than the per-account deadline, so a lease winner can still store the tokens it got. */
-const TOKEN_TIMEOUT_MS = 1500;
+/** Refresh only: shorter than the per-account deadline, so a lease winner can still store the tokens. */
+const REFRESH_TIMEOUT_MS = 1500;
 const REFRESH_SKEW_MS = 30_000;
 const NOW_PLAYING_TTL_MS = 3000;
 const PLAYLIST_TTL_MS = 60 * 60 * 1000;
@@ -68,7 +68,7 @@ export function httpSpotifyClient(
 ): SpotifyClient {
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-  async function tokenRequest(params: Record<string, string>) {
+  async function tokenRequest(params: Record<string, string>, timeoutMs: number) {
     const res = await fetchImpl('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
@@ -76,7 +76,7 @@ export function httpSpotifyClient(
         Authorization: `Basic ${basic}`,
       },
       body: new URLSearchParams(params),
-      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       let code = '';
@@ -106,7 +106,7 @@ export function httpSpotifyClient(
 
   return {
     async refresh(refreshToken) {
-      const d = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken });
+      const d = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken }, REFRESH_TIMEOUT_MS);
       return { accessToken: d.access_token, expiresIn: d.expires_in, refreshToken: d.refresh_token };
     },
 
@@ -155,11 +155,11 @@ export function httpSpotifyClient(
     },
 
     async exchangeCode(code, redirectUri) {
-      const d = await tokenRequest({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-      });
+      // The OAuth link flow has no per-account deadline: keep the longer timeout.
+      const d = await tokenRequest(
+        { grant_type: 'authorization_code', code, redirect_uri: redirectUri },
+        TIMEOUT_MS,
+      );
       if (!d.refresh_token) throw new Error('Spotify returned no refresh token');
       return { accessToken: d.access_token, refreshToken: d.refresh_token, expiresIn: d.expires_in };
     },

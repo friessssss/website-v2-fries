@@ -171,12 +171,23 @@ describe('songMeta', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('omits the artist filter when the artist is empty, and ignores a blank title', async () => {
+  it('with an empty artist, does not search (no title-only guess) and ignores a blank title', async () => {
     const { calls } = fakeSpotify([{ id: 'x', name: 'Song', artists: ['Whoever'] }]);
-    expect(await resolveSongMeta(db, 'Song', '', { now: NOW })).toMatchObject({ trackId: 'x' });
-    expect(calls.search[0].searchParams.get('q')).toBe('track:Song');
+    expect(await resolveSongMeta(db, 'Song', '', { now: NOW })).toBeNull();
+    expect(await resolveSongMeta(db, 'Song', '  ', { now: NOW })).toBeNull();
     expect(await resolveSongMeta(db, '  !! ', 'A', { now: NOW })).toBeNull();
-    expect(calls.search).toHaveLength(1);
+    expect(calls.search).toHaveLength(0);
+  });
+
+  it('queries only the first artist of a credit', async () => {
+    const { calls } = fakeSpotify([{ id: 'x', name: 'Song', artists: ['Big Artist', 'Other'] }]);
+    for (const credit of ['Big Artist, Other', 'Big Artist & Other', 'Big Artist feat. Other', 'Big Artist x Other']) {
+      await resolveSongMeta(db, 'Song', credit, { now: NOW });
+    }
+    // All four share one song key, so the later ones are cache hits.
+    expect(calls.search.map((u) => u.searchParams.get('q'))).toEqual(['track:Song artist:Big Artist']);
+    await resolveSongMeta(db, 'Other Song', '  Mixed  Case   ft. Someone', { now: NOW });
+    expect(calls.search[1].searchParams.get('q')).toBe('track:Other Song artist:Mixed Case');
   });
 
   it('null album art when the album has no images', async () => {

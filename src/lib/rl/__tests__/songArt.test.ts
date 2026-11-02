@@ -46,6 +46,35 @@ describe('backfillSongArt', () => {
     expect(await backfillSongArt(db, { lookup, now: NOW })).toEqual({ lookups: 0, updated: 0 });
   });
 
+  it('skips song groups without an artist', async () => {
+    const db = getDb();
+    await seedEvent(db, 'No Artist', '');
+    await collections(db).events.insertOne({
+      type: 'goal', actor: 'zach', song: 'Null Artist', artist: null, songKey: songKey('Null Artist', null),
+      songResolved: true, occurredAt: NOW, sessionId: 's', source: 'legacy', createdAt: NOW,
+    });
+    await seedEvent(db, 'Has Artist', 'A');
+    const lookup = vi.fn(async (title: string) => metaFor(title));
+    expect(await backfillSongArt(db, { lookup, now: NOW })).toEqual({ lookups: 1, updated: 1 });
+    expect(lookup).toHaveBeenCalledWith('Has Artist', 'A');
+  });
+
+  it('never overwrites stored album art or album, and never writes nulls', async () => {
+    const db = getDb();
+    await seedEvent(db, 'Arty', 'A', { albumArt: 'http://mine', album: 'My Album' });
+    await seedEvent(db, 'Arty', 'A');
+    await seedEvent(db, 'Bare', 'A');
+    const lookup = vi.fn(async (title: string): Promise<SongMeta> =>
+      title === 'Bare' ? { ...metaFor(title), album: null, albumArt: null } : metaFor(title));
+    await backfillSongArt(db, { lookup, now: NOW });
+    const docs = await collections(db).events.find({}).sort({ _id: 1 }).toArray();
+    expect(docs[0]).toMatchObject({ trackId: 'id-Arty', albumArt: 'http://mine', album: 'My Album' });
+    expect(docs[1]).toMatchObject({ trackId: 'id-Arty', albumArt: 'http://art/Arty', album: 'Album Arty' });
+    expect(docs[2].trackId).toBe('id-Bare');
+    expect('albumArt' in docs[2]).toBe(false);
+    expect('album' in docs[2]).toBe(false);
+  });
+
   it('ignores events without a song', async () => {
     const db = getDb();
     await collections(db).events.insertOne({

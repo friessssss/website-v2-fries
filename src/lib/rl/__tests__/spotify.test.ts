@@ -219,6 +219,18 @@ describe('spotify', () => {
     expect(took).toBeLessThan(2400);
   });
 
+  it('the OAuth code exchange keeps the longer 2.5 s timeout', async () => {
+    const hanging = (async (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      })) as typeof fetch;
+    const started = Date.now();
+    await expect(httpSpotifyClient('id', 'secret', hanging).exchangeCode('c', 'http://x')).rejects.toBeDefined();
+    const took = Date.now() - started;
+    expect(took).toBeGreaterThanOrEqual(2400);
+    expect(took).toBeLessThan(4000);
+  }, 10_000);
+
   it('a successful refresh resets the failure count', async () => {
     await seed('a1', { expired: true, extra: { authFailures: 2, firstAuthFailureAt: min(-30) } });
     const { client } = fakeClient({ 'at-r-a1': playing('A') });
