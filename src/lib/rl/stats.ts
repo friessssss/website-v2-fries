@@ -28,7 +28,11 @@ type SongTotals = {
 };
 
 const EVENT_TYPES: EventType[] = ['goal', 'assist', 'save', 'demo'];
-const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
+/**
+ * Goals by a non-roster player on our team. They count in every "for" total but are never listed
+ * as a person (leaderboard rows, per-song byActor, per-player records).
+ */
+export const TEAMMATE: Actor = 'teammate';
 const TOP_SONGS_LIMIT = 5;
 
 const zeroCounts = (): Counts => ({ goal: 0, assist: 0, save: 0, demo: 0 });
@@ -96,7 +100,7 @@ async function songBreakdown(db: Db, filter: object, type: EventType): Promise<S
   groups.forEach(({ display, byActor }) => {
     const s: SongTotals = { ...display, byActor: {}, goalsFor: 0, goalsAgainst: 0 };
     byActor.forEach((n, actor) => {
-      s.byActor[actor] = n;
+      if (actor !== TEAMMATE) s.byActor[actor] = n;
       if (actor === 'opponent') s.goalsAgainst += n;
       else s.goalsFor += n;
     });
@@ -166,9 +170,7 @@ export async function sessionStats(
   const leaderboard = roster
     .map((p) => row(p.slug, p.displayName, p.aliases))
     .sort((a, b) => b.goals - a.goals || a.displayName.localeCompare(b.displayName));
-  const teammate = row('teammate', SPECIAL_NAMES.teammate, []);
-  if (teammate.goals > 0) leaderboard.push(teammate);
-  leaderboard.push(row('opponent', SPECIAL_NAMES.opponent, []));
+  leaderboard.push(row('opponent', 'Opponent', []));
 
   return { sessionId, goalsFor, goalsAgainst, leaderboard, songs, topSong };
 }
@@ -205,6 +207,7 @@ async function topPairs(
     .events.aggregate<{ _id: Actor; count: number }>([
       { $match: match },
       { $group: { _id: field, count: { $sum: 1 } } },
+      { $match: { _id: { $ne: TEAMMATE } } },
       { $sort: { count: -1, _id: 1 } },
     ])
     .toArray();

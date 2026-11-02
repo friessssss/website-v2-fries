@@ -3,7 +3,9 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // PlayerRef identifies a player as the game reports them.
@@ -26,6 +28,48 @@ type Event struct {
 	Victim    *PlayerRef     `json:"victim,omitempty"`
 	Players   []PlayerRef    `json:"players,omitempty"`
 	Score     map[string]int `json:"score,omitempty"`
+	// Song is the track playing on this PC when the event happened (stat
+	// events and heartbeats only); nil when nothing is playing.
+	Song *Song `json:"song,omitempty"`
+}
+
+// Song is a track read from the local media player.
+type Song struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist"`
+	Source string `json:"source"` // always "local"
+}
+
+// SongFieldMax is the longest title or artist the site accepts, in UTF-16
+// code units (JavaScript's String.length), so both sides agree.
+const SongFieldMax = 200
+
+// LocalSong builds a "local" Song with title and artist trimmed and capped
+// at SongFieldMax UTF-16 code units. It returns nil when the title is blank.
+func LocalSong(title, artist string) *Song {
+	title, artist = capField(title), capField(artist)
+	if title == "" {
+		return nil
+	}
+	return &Song{Title: title, Artist: artist, Source: "local"}
+}
+
+// capField trims s and cuts it at SongFieldMax UTF-16 code units, never
+// inside a surrogate pair.
+func capField(s string) string {
+	s = strings.TrimSpace(s)
+	units := 0
+	for i, r := range s {
+		n := utf16.RuneLen(r)
+		if n < 0 {
+			n = 1 // invalid UTF-8 is sent as U+FFFD
+		}
+		if units+n > SongFieldMax {
+			return strings.TrimSpace(s[:i])
+		}
+		units += n
+	}
+	return s
 }
 
 // TimeLayout is RFC3339 with milliseconds; times are always sent in UTC.

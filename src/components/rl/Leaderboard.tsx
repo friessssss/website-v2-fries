@@ -37,12 +37,11 @@ export default function Leaderboard({
           const key = flash ? `${r.actor}-${highlightActor.nonce}` : r.actor;
           const cls = `${ROW} ${flash ? 'rl-flash' : ''}`;
           const count = <span className="text-right font-mono text-sm tabular-nums text-ink-70">{r.goals}</span>;
-          if (r.actor === 'opponent' || r.actor === 'teammate') {
-            const opp = r.actor === 'opponent';
+          if (r.actor === 'opponent') {
             return (
-              <li key={key} className={`${cls} ${opp ? 'mt-1' : ''}`}>
-                <span className={`leading-tight ${opp ? 'text-danger' : 'text-ink-90'}`}>{r.displayName}</span>
-                <Bar share={r.goals / max} danger={opp} />
+              <li key={key} className={`${cls} mt-1`}>
+                <span className="leading-tight text-danger">{r.displayName}</span>
+                <Bar share={r.goals / max} danger />
                 {count}
               </li>
             );

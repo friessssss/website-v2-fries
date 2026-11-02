@@ -16,6 +16,26 @@ export type Track = {
   playlistId: string | null;
 };
 
+/** A song the helper read on the PC (e.g. the Spotify window) when the event happened. */
+export type LocalSong = { title: string; artist: string; source: 'local' };
+
+/** A Spotify catalogue match for a song, found by search (see songMeta.ts). */
+export type SongMeta = {
+  trackId: string;
+  song: string;
+  artist: string;
+  album: string | null;
+  albumArt: string | null;
+};
+
+/** Cached Spotify Search result, keyed by songKey; `meta` null caches a miss. */
+export interface SongMetaDoc {
+  _id: string;
+  meta: SongMeta | null;
+  expiresAt: Date;
+  updatedAt: Date;
+}
+
 export interface PlayerDoc {
   _id?: ObjectId;
   slug: string;
@@ -79,6 +99,15 @@ export interface SpotifyAccountDoc {
   accessTokenExpiresAt?: Date;
   status: 'ok' | 'needs_relink';
   lastSeenPlayingAt?: Date;
+  /** Single-flight refresh lease across instances: held while one request refreshes the token. */
+  refreshLockUntil?: Date;
+  /** Consecutive refresh rejections (invalid_grant) since the last success, and when the run began. */
+  authFailures?: number;
+  firstAuthFailureAt?: Date;
+  /** The latest invalid_grant: no refresh is attempted for 60 s after it. */
+  lastAuthFailureAt?: Date;
+  /** Last refresh attempt on a needs_relink account (probed at most every 10 minutes). */
+  lastRelinkProbeAt?: Date;
   createdAt: Date;
 }
 

@@ -22,7 +22,7 @@ export type FunStats = {
 
 export const WIN_RATE_MIN_MATCHES = 3;
 
-const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
+const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent' };
 
 function bump<K>(m: Map<K, number>, k: K): number {
   const n = (m.get(k) ?? 0) + 1;
@@ -52,10 +52,9 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
     .map((actor) => ({ actor, displayName: nameOf(actor), count: demoCounts.get(actor) ?? 0 }))
     .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
 
-  // Who demos who.
+  // Who demos who: roster plus Opponent (teammate demos are not a person's record).
   const actors: Actor[] = [
     ...roster.slice().sort((a, b) => a.displayName.localeCompare(b.displayName)).map((p) => p.slug),
-    'teammate',
     'opponent',
   ];
   const counts = actors.map(() => actors.map(() => 0));
@@ -154,9 +153,10 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
     .sort((a, b) => b.rate - a.rate || b.matches - a.matches || a.song.localeCompare(b.song));
 
   // Night of the night: each roster player's best session by goals + assists + saves.
+  // Imported seasons (christmas-league-YYYY) are a whole season in one "session", not a night.
   const perSession = new Map<string, { total: number; last: number }>();
   for (const e of events) {
-    if (e.type === 'demo' || !rosterSlugs.has(e.actor)) continue;
+    if (e.type === 'demo' || e.source === 'import' || !rosterSlugs.has(e.actor)) continue;
     const k = `${e.actor}\u0000${e.sessionId}`;
     const row = perSession.get(k) ?? { total: 0, last: 0 };
     row.total++;

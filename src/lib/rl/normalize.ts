@@ -20,10 +20,16 @@ export function normalizeSong(s: string): string {
   return stripPunctuation(t);
 }
 
+const ARTIST_SEPARATOR = /\s*&\s*|\s*,\s*|\s+(?:feat\.?|ft\.?|featuring)\s+|\s+x\s+/i;
+
+/** The first artist of a credit like "A & B", "A, B", "A feat. B", "A x B", spelling kept (spaces tidied). */
+export function firstArtist(s: string): string {
+  return s.normalize('NFKC').trim().replace(/\s+/g, ' ').split(ARTIST_SEPARATOR)[0];
+}
+
 /** Comparison key for the first artist of a credit like "A & B", "A, B", "A feat. B", "A x B". */
 export function normalizeFirstArtist(s: string): string {
-  const first = normalizeName(s).split(/\s*&\s*|\s*,\s*|\s+(?:feat\.?|ft\.?|featuring)\s+|\s+x\s+/)[0];
-  return stripPunctuation(first);
+  return stripPunctuation(normalizeName(s).split(ARTIST_SEPARATOR)[0]);
 }
 
 /** Song identity for every song breakdown: normalised title + normalised first artist. */

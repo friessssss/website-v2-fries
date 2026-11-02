@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from '../crypto';
 import {
   SpotifyAuthError,
   cachedNowPlaying,
+  httpSpotifyClient,
   linkAccount,
   listAccounts,
   pickNowPlaying,
@@ -39,7 +40,7 @@ function fakeClient(plays: Record<string, RawPlaying | null | Error>) {
   const client: SpotifyClient = {
     async refresh(refreshToken) {
       calls.refresh.push(refreshToken);
-      if (refreshToken.startsWith('bad')) throw new SpotifyAuthError('invalid_grant');
+      if (refreshToken.startsWith('bad')) throw new SpotifyAuthError('invalid_grant', 400, 'invalid_grant');
       return { accessToken: `at-${refreshToken}`, expiresIn: 3600 };
     },
     async currentlyPlaying(accessToken) {
@@ -73,7 +74,13 @@ describe('spotify', () => {
 
   async function seed(
     slug: string,
-    opts: { lastSeen?: Date; status?: 'ok' | 'needs_relink'; expired?: boolean; refresh?: string } = {},
+    opts: {
+      lastSeen?: Date;
+      status?: 'ok' | 'needs_relink';
+      expired?: boolean;
+      refresh?: string;
+      extra?: Record<string, unknown>;
+    } = {},
   ) {
     await collections(db).spotifyAccounts.insertOne({
       playerSlug: slug,
@@ -85,8 +92,12 @@ describe('spotify', () => {
       status: opts.status ?? 'ok',
       lastSeenPlayingAt: opts.lastSeen,
       createdAt: NOW,
+      ...opts.extra,
     });
   }
+
+  const account = (slug: string) => collections(db).spotifyAccounts.findOne({ playerSlug: slug });
+  const min = (n: number) => new Date(NOW.getTime() + n * 60_000);
 
   it('picks the majority track and the most recently seen host among its listeners', async () => {
     await seed('a1', { lastSeen: new Date('2026-11-02T10:00:00Z') });
@@ -130,15 +141,257 @@ describe('spotify', () => {
     expect(await pickNowPlaying(db, client, key, NOW)).toBeNull();
   });
 
-  it('marks an account needs_relink when refresh fails with an auth error, others still answer', async () => {
+  it('a single refresh rejection does not flag the account; others still answer', async () => {
     await seed('bad', { expired: true, refresh: 'bad-refresh' });
     await seed('a1');
     await seed('a2');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { client } = fakeClient({ 'tok-a1': playing('A'), 'tok-a2': playing('A') });
     const r = await pickNowPlaying(db, client, key, NOW);
     expect(r?.track.trackId).toBe('A');
-    const bad = await collections(db).spotifyAccounts.findOne({ playerSlug: 'bad' });
+    const bad = await account('bad');
+    expect(bad?.status).toBe('ok');
+    expect(bad?.authFailures).toBe(1);
+    expect(bad?.firstAuthFailureAt).toEqual(NOW);
+    expect(bad?.refreshLockUntil).toBeUndefined();
+    // Status and Spotify's error code only: never tokens or bodies.
+    expect(spy).toHaveBeenCalledWith('[rl] spotify refresh rejected', String(bad!._id), 400, 'invalid_grant');
+    spy.mockRestore();
+  });
+
+  it('flags needs_relink only after 3 consecutive rejections spanning at least 10 minutes', async () => {
+    await seed('bad', { expired: true, refresh: 'bad-refresh' });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({});
+    for (const t of [0, 1, 2, 5]) {
+      await pickNowPlaying(db, client, key, min(t));
+      expect((await account('bad'))?.status).toBe('ok');
+    }
+    expect((await account('bad'))?.authFailures).toBe(4);
+    await pickNowPlaying(db, client, key, min(10));
+    const bad = await account('bad');
     expect(bad?.status).toBe('needs_relink');
+    expect(bad?.lastRelinkProbeAt).toEqual(min(10));
+    expect(calls.refresh).toHaveLength(5);
+    spy.mockRestore();
+  });
+
+  it('after an invalid_grant, skips refreshing that account for 60 s', async () => {
+    await seed('bad', { expired: true, refresh: 'bad-refresh' });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({});
+    await pickNowPlaying(db, client, key, NOW);
+    expect(calls.refresh).toHaveLength(1);
+    expect((await account('bad'))?.lastAuthFailureAt).toEqual(NOW);
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 30_000));
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 59_999));
+    expect(calls.refresh).toHaveLength(1);
+    expect((await account('bad'))?.authFailures).toBe(1);
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 60_000));
+    expect(calls.refresh).toHaveLength(2);
+    expect((await account('bad'))?.lastAuthFailureAt).toEqual(new Date(NOW.getTime() + 60_000));
+    spy.mockRestore();
+  });
+
+  it('the 60 s back-off still uses a stored access token that is fresh', async () => {
+    await seed('a1', { extra: { lastAuthFailureAt: NOW, authFailures: 1, firstAuthFailureAt: NOW } });
+    const { client, calls } = fakeClient({ 'tok-a1': playing('A') });
+    expect((await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 1000)))?.track.trackId).toBe('A');
+    expect(calls.refresh).toHaveLength(0);
+  });
+
+  it('a successful refresh clears lastAuthFailureAt', async () => {
+    await seed('a1', { expired: true, extra: { authFailures: 1, firstAuthFailureAt: min(-2), lastAuthFailureAt: min(-2) } });
+    const { client } = fakeClient({ 'at-r-a1': playing('A') });
+    expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
+    expect((await account('a1'))?.lastAuthFailureAt).toBeUndefined();
+  });
+
+  it('the http client gives the token request 1.5 s, inside the 2.5 s per-account deadline', async () => {
+    const hanging = (async (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      })) as typeof fetch;
+    const started = Date.now();
+    await expect(httpSpotifyClient('id', 'secret', hanging).refresh('rt')).rejects.toBeDefined();
+    const took = Date.now() - started;
+    expect(took).toBeGreaterThanOrEqual(1400);
+    expect(took).toBeLessThan(2400);
+  });
+
+  it('the OAuth code exchange keeps the longer 2.5 s timeout', async () => {
+    const hanging = (async (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      })) as typeof fetch;
+    const started = Date.now();
+    await expect(httpSpotifyClient('id', 'secret', hanging).exchangeCode('c', 'http://x')).rejects.toBeDefined();
+    const took = Date.now() - started;
+    expect(took).toBeGreaterThanOrEqual(2400);
+    expect(took).toBeLessThan(4000);
+  }, 10_000);
+
+  it('a successful refresh resets the failure count', async () => {
+    await seed('a1', { expired: true, extra: { authFailures: 2, firstAuthFailureAt: min(-30) } });
+    const { client } = fakeClient({ 'at-r-a1': playing('A') });
+    expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
+    const a1 = await account('a1');
+    expect(a1?.status).toBe('ok');
+    expect(a1?.authFailures ?? 0).toBe(0);
+    expect(a1?.firstAuthFailureAt).toBeUndefined();
+  });
+
+  it('retries a needs_relink account at most every 10 minutes and returns it to ok on success', async () => {
+    await seed('a1', {
+      expired: true,
+      status: 'needs_relink',
+      extra: { authFailures: 3, firstAuthFailureAt: min(-30), lastRelinkProbeAt: min(-5) },
+    });
+    const { client, calls } = fakeClient({ 'at-r-a1': playing('A') });
+    expect(await pickNowPlaying(db, client, key, NOW)).toBeNull();
+    expect(calls.refresh).toHaveLength(0);
+    const r = await pickNowPlaying(db, client, key, min(6));
+    expect(r?.track.trackId).toBe('A');
+    expect(calls.refresh).toEqual(['r-a1']);
+    const a1 = await account('a1');
+    expect(a1?.status).toBe('ok');
+    expect(a1?.authFailures ?? 0).toBe(0);
+  });
+
+  it('a failed relink probe keeps the flag and waits another 10 minutes', async () => {
+    await seed('bad', { refresh: 'bad-refresh', status: 'needs_relink', extra: { lastRelinkProbeAt: min(-11) } });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({ 'tok-bad': playing('A') });
+    // A flagged account is probed with a refresh even while its cached access token looks fresh.
+    expect(await pickNowPlaying(db, client, key, NOW)).toBeNull();
+    expect(calls.refresh).toEqual(['bad-refresh']);
+    expect((await account('bad'))?.status).toBe('needs_relink');
+    expect((await account('bad'))?.lastRelinkProbeAt).toEqual(NOW);
+    await pickNowPlaying(db, client, key, min(9));
+    expect(calls.refresh).toHaveLength(1);
+    await pickNowPlaying(db, client, key, min(10));
+    expect(calls.refresh).toHaveLength(2);
+    spy.mockRestore();
+  });
+
+  it('a 401 on currently-playing triggers one refresh and a retry, and never flags', async () => {
+    await seed('a1');
+    const { client, calls } = fakeClient({
+      'tok-a1': new SpotifyAuthError('Spotify access token rejected'),
+      'at-r-a1': playing('A'),
+    });
+    const r = await pickNowPlaying(db, client, key, NOW);
+    expect(r?.track.trackId).toBe('A');
+    expect(calls.refresh).toEqual(['r-a1']);
+    const a1 = await account('a1');
+    expect(a1?.status).toBe('ok');
+    expect(a1?.authFailures ?? 0).toBe(0);
+    expect(a1?.accessToken).toBe('at-r-a1');
+  });
+
+  it('a 401 that persists after the refresh skips the account without flagging it', async () => {
+    await seed('a1');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({
+      'tok-a1': new SpotifyAuthError('Spotify access token rejected'),
+      'at-r-a1': new SpotifyAuthError('Spotify access token rejected'),
+    });
+    for (const t of [0, 5, 11, 20]) expect(await pickNowPlaying(db, client, key, min(t))).toBeNull();
+    expect(calls.refresh.length).toBeGreaterThanOrEqual(1);
+    const a1 = await account('a1');
+    expect(a1?.status).toBe('ok');
+    expect(a1?.authFailures ?? 0).toBe(0);
+    spy.mockRestore();
+  });
+
+  it('concurrent picks with an expired token make exactly one refresh call', async () => {
+    await seed('a1', { expired: true });
+    const { client, calls } = fakeClient({ 'at-r-a1': playing('A') });
+    const inner = client.refresh;
+    client.refresh = async (rt) => {
+      await new Promise((r) => setTimeout(r, 150));
+      return inner(rt);
+    };
+    const results = await Promise.all([1, 2, 3].map(() => pickNowPlaying(db, client, key, NOW, 2500)));
+    expect(calls.refresh).toEqual(['r-a1']);
+    expect(results.map((r) => r?.track.trackId)).toEqual(['A', 'A', 'A']);
+    expect((await account('a1'))?.refreshLockUntil).toBeUndefined();
+  });
+
+  it('a loser whose winner fails skips the account this round, not as an auth failure', async () => {
+    await seed('a1', { expired: true });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({ 'at-r-a1': playing('A') });
+    client.refresh = async (rt) => {
+      calls.refresh.push(rt);
+      await new Promise((r) => setTimeout(r, 100));
+      throw new Error('network down');
+    };
+    const results = await Promise.all([1, 2].map(() => pickNowPlaying(db, client, key, NOW, 2500)));
+    expect(results).toEqual([null, null]);
+    expect(calls.refresh).toHaveLength(1);
+    const a1 = await account('a1');
+    expect(a1?.status).toBe('ok');
+    expect(a1?.authFailures ?? 0).toBe(0);
+    expect(a1?.refreshLockUntil).toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it('stores the last refresh token Spotify issued across concurrent and later refreshes', async () => {
+    await seed('a1', { expired: true, refresh: 'rt-0' });
+    const issued: string[] = [];
+    const { client, calls } = fakeClient({});
+    client.refresh = async (rt) => {
+      calls.refresh.push(rt);
+      await new Promise((r) => setTimeout(r, 50));
+      // Spotify rotates: the old token is dead from now on.
+      if (rt !== (issued.at(-1) ?? 'rt-0')) throw new SpotifyAuthError('invalid_grant', 400, 'invalid_grant');
+      const next = `rt-${issued.length + 1}`;
+      issued.push(next);
+      return { accessToken: `at-${next}`, expiresIn: 3600, refreshToken: next };
+    };
+    client.currentlyPlaying = async () => playing('A');
+    const expire = () =>
+      collections(db).spotifyAccounts.updateOne({ playerSlug: 'a1' }, { $set: { accessTokenExpiresAt: min(-1) } });
+    // Two instances loaded the account (with rt-0) before either refreshed.
+    const stale = await collections(db).spotifyAccounts.find({}).toArray();
+    expect(stale).toHaveLength(1);
+    await Promise.all([1, 2].map(() => pickNowPlaying(db, client, key, NOW, 2500)));
+    await expire();
+    await Promise.all([1, 2].map(() => pickNowPlaying(db, client, key, NOW, 2500)));
+    expect(calls.refresh).toEqual(['rt-0', 'rt-1']);
+    const a1 = await account('a1');
+    expect(decryptSecret(a1!.refreshTokenEnc, key)).toBe(issued.at(-1));
+    expect(a1?.authFailures ?? 0).toBe(0);
+  });
+
+  it('re-reads the refresh token from the database right before refreshing', async () => {
+    await seed('a1', { expired: true, refresh: 'rt-old' });
+    const { client, calls } = fakeClient({ 'at-rt-new': playing('A') });
+    // Simulate another instance rotating the token between our list and our refresh.
+    const realCollection = db.collection.bind(db);
+    db.collection = ((name: string, ...a: any[]) => {
+      const c = (realCollection as any)(name, ...a);
+      if (name !== 'spotifyAccounts') return c;
+      const f = c.find.bind(c);
+      c.find = (...args: any[]) => {
+        const cursor = f(...args);
+        const toArray = cursor.toArray.bind(cursor);
+        cursor.toArray = async () => {
+          const docs = await toArray();
+          await realCollection('spotifyAccounts').updateOne({}, { $set: { refreshTokenEnc: encryptSecret('rt-new', key) } });
+          return docs;
+        };
+        return cursor;
+      };
+      return c;
+    }) as typeof db.collection;
+    try {
+      expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
+    } finally {
+      db.collection = realCollection as typeof db.collection;
+    }
+    expect(calls.refresh).toEqual(['rt-new']);
   });
 
   it('skips accounts with other errors without changing their status', async () => {
@@ -232,7 +485,7 @@ describe('spotify', () => {
     expect(r?.hostSlug).toBe('a1');
   });
 
-  it('does not fail the pick when persisting needs_relink throws', async () => {
+  it('does not fail the pick when persisting a refresh rejection throws', async () => {
     await seed('bad', { expired: true, refresh: 'bad-refresh' });
     await seed('a1');
     const { client } = fakeClient({ 'tok-a1': playing('A') });
@@ -241,14 +494,32 @@ describe('spotify', () => {
       const c = (realCollection as any)(name, ...a);
       const o = c.updateOne.bind(c);
       c.updateOne = (f: any, u: any, ...r: any[]) =>
-        u?.$set?.status === 'needs_relink' ? Promise.reject(new Error('db down')) : o(f, u, ...r);
+        u?.$set?.authFailures !== undefined ? Promise.reject(new Error('db down')) : o(f, u, ...r);
       return c;
     }) as typeof db.collection;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
     } finally {
       db.collection = realCollection as typeof db.collection;
+      spy.mockRestore();
     }
+  });
+
+  it('relinking clears the failure tracking', async () => {
+    const { client } = fakeClient({});
+    await linkAccount(db, client, { playerSlug: 'a1', code: 'c', redirectUri: 'http://x', tokenKey: key });
+    await collections(db).spotifyAccounts.updateOne(
+      {},
+      { $set: { status: 'needs_relink', authFailures: 5, firstAuthFailureAt: NOW, lastRelinkProbeAt: NOW, lastAuthFailureAt: NOW } },
+    );
+    await linkAccount(db, client, { playerSlug: 'a1', code: 'c', redirectUri: 'http://x', tokenKey: key });
+    const doc = await collections(db).spotifyAccounts.findOne({});
+    expect(doc?.status).toBe('ok');
+    expect(doc?.authFailures).toBeUndefined();
+    expect(doc?.firstAuthFailureAt).toBeUndefined();
+    expect(doc?.lastRelinkProbeAt).toBeUndefined();
+    expect(doc?.lastAuthFailureAt).toBeUndefined();
   });
 
   it('lists accounts without secrets and unlinks', async () => {
@@ -257,5 +528,18 @@ describe('spotify', () => {
     expect(list).toHaveLength(1);
     await unlinkAccount(db, list[0]._id!);
     expect(await listAccounts(db)).toHaveLength(0);
+  });
+
+  it('the http client reports the HTTP status and Spotify error code of a token rejection', async () => {
+    const res = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    const invalid = httpSpotifyClient('id', 'secret', (async () =>
+      res(400, { error: 'invalid_grant', error_description: 'Refresh token revoked' })) as typeof fetch);
+    const err = await invalid.refresh('rt').catch((e) => e);
+    expect(err).toBeInstanceOf(SpotifyAuthError);
+    expect(err).toMatchObject({ httpStatus: 400, spotifyErrorCode: 'invalid_grant' });
+    expect(String(err.message)).not.toContain('revoked');
+    const other = httpSpotifyClient('id', 'secret', (async () => res(400, { error: 'invalid_request' })) as typeof fetch);
+    expect(await other.refresh('rt').catch((e) => e)).not.toBeInstanceOf(SpotifyAuthError);
   });
 });

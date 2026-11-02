@@ -827,3 +827,75 @@ func TestDropFailureAfterRejectionBacksOff(t *testing.T) {
 		t.Fatalf("no backoff between failed drops: sleeps %v", got)
 	}
 }
+
+func TestHeartbeatCarriesSong(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrRetryable })
+	var mu sync.Mutex
+	cur := model.LocalSong("Uprising", "Muse")
+	h.deps.Song = func() *model.Song { mu.Lock(); defer mu.Unlock(); return cur }
+	h.src.events["g"] = []model.Event{goalEv(1)}
+	h.src.inMatch.Store(true)
+	h.stream.ch <- item{raw: json.RawMessage("g")}
+	h.start()
+	waitFor(t, "goal queued", func() bool { return h.q.Len() >= 1 })
+
+	beats := func() []model.Event {
+		var hb []model.Event
+		for _, e := range h.q.Peek(1000) {
+			if e.Kind == "heartbeat" {
+				hb = append(hb, e)
+			}
+		}
+		return hb
+	}
+	h.hbTick <- struct{}{}
+	h.hbTick <- struct{}{}
+	hb := beats()
+	if len(hb) < 1 || hb[0].Song == nil || *hb[0].Song != *model.LocalSong("Uprising", "Muse") {
+		t.Fatalf("heartbeat song: %+v", hb)
+	}
+	mu.Lock()
+	cur = nil
+	mu.Unlock()
+	n := len(hb)
+	h.hbTick <- struct{}{}
+	h.hbTick <- struct{}{}
+	hb = beats()
+	if len(hb) <= n || hb[len(hb)-1].Song != nil {
+		t.Fatalf("heartbeat with nothing playing: %+v", hb)
+	}
+}
+
+func TestSongKeptWarmOnlyInMatch(t *testing.T) {
+	h := newHarness(t, func(int, []model.Event) ([]api.Result, error) { return nil, api.ErrRetryable })
+	var reads atomic.Int32
+	h.deps.Song = func() *model.Song { reads.Add(1); return model.LocalSong("Uprising", "Muse") }
+	h.start()
+	time.Sleep(30 * time.Millisecond) // many SongWarmEvery ticks (the harness sleeps 1 ms)
+	if n := reads.Load(); n != 0 {
+		t.Fatalf("song read %d times outside a match", n)
+	}
+	h.mu.Lock()
+	h.sleeps = nil
+	h.mu.Unlock()
+	h.src.inMatch.Store(true)
+	waitFor(t, "warm reads in match", func() bool { return reads.Load() >= 5 })
+	h.mu.Lock()
+	var warmSleeps int
+	for _, d := range h.sleeps {
+		if d == SongWarmEvery {
+			warmSleeps++
+		}
+	}
+	h.mu.Unlock()
+	if warmSleeps == 0 || SongWarmEvery > time.Second {
+		t.Fatalf("warm interval %v (%d sleeps)", SongWarmEvery, warmSleeps)
+	}
+	h.src.inMatch.Store(false)
+	time.Sleep(10 * time.Millisecond) // let an in-flight tick finish
+	n := reads.Load()
+	time.Sleep(30 * time.Millisecond)
+	if m := reads.Load(); m != n {
+		t.Fatalf("song still read after the match: %d -> %d", n, m)
+	}
+}

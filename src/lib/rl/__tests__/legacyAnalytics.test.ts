@@ -34,6 +34,18 @@ const SLUGS: Record<string, string> = Object.fromEntries([
   ['Teammate', 'teammate'],
 ]);
 
+/**
+ * The old routes listed Teammate per person; it now only counts in the totals (friends/total/net),
+ * so the reference output is compared with Teammate removed from each playerBreakdown.
+ */
+function withoutTeammate<T>(payload: T): T {
+  return JSON.parse(JSON.stringify(payload), (key, value) =>
+    key === 'playerBreakdown' && Array.isArray(value)
+      ? value.filter((p: { player: string }) => p.player !== 'Teammate')
+      : value,
+  );
+}
+
 describe('legacy analytics over events', () => {
   const getDb = useTestDb();
 
@@ -68,7 +80,7 @@ describe('legacy analytics over events', () => {
     const db = await seedEvents();
     for (const playlistFilter of [null, 'Chill', 'Old Mix', 'Nope']) {
       const got = await analyticsPayload(db, { timeFilter, playlistFilter, now: NOW });
-      expect(JSON.stringify(got)).toBe(JSON.stringify(referenceAnalytics(LEGACY, timeFilter, playlistFilter, NOW)));
+      expect(JSON.stringify(got)).toBe(JSON.stringify(withoutTeammate(referenceAnalytics(LEGACY, timeFilter, playlistFilter, NOW))));
     }
   });
 
@@ -78,7 +90,7 @@ describe('legacy analytics over events', () => {
       for (const playlistFilter of [null, 'Chill']) {
         const got = await timelinePayload(db, { timeFilter, playlistFilter, groupBy, now: NOW });
         expect(JSON.stringify(got)).toBe(
-          JSON.stringify(referenceTimeline(LEGACY, timeFilter, playlistFilter, groupBy, NOW)),
+          JSON.stringify(withoutTeammate(referenceTimeline(LEGACY, timeFilter, playlistFilter, groupBy, NOW))),
         );
       }
     }
@@ -101,5 +113,26 @@ describe('legacy analytics over events', () => {
     });
     const a = await analyticsPayload(db, { timeFilter: 'lifetime', now: NOW });
     expect(a.totalFriendsGoals + a.totalOpponentGoals).toBe(LEGACY.length);
+  });
+
+  it('counts teammate goals in the totals but lists no Teammate per person', async () => {
+    const db = await seedEvents();
+    const a = await analyticsPayload(db, { timeFilter: 'lifetime', now: NOW });
+    const teammateGoals = LEGACY.filter((g) => g.player === 'Teammate').length;
+    expect(teammateGoals).toBeGreaterThan(0);
+    expect(a.totalFriendsGoals).toBe(LEGACY.filter((g) => g.player !== 'Opponent').length);
+    const songC = a.songs.find((s) => s.song === 'Song C')!;
+    expect(songC.friendsGoals).toBe(3); // sam, zach, teammate
+    expect(songC.totalGoals).toBe(3);
+    expect(songC.netScore).toBe(3);
+    const t = await timelinePayload(db, { timeFilter: 'lifetime', groupBy: 'day', now: NOW });
+    expect(t.totalGoals).toBe(LEGACY.length);
+    const rows = [...a.songs, ...a.artists, ...t.timeline];
+    for (const r of rows) {
+      expect(r.playerBreakdown.map((p) => p.player)).not.toContain('Teammate');
+      expect(r.playerBreakdown.map((p) => p.player)).not.toContain('teammate');
+    }
+    const last = t.timeline.at(-1)!;
+    expect(last.friendsGoals).toBe(3); // 2026-11-01: zach x2 + teammate
   });
 });

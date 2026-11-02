@@ -4,9 +4,10 @@ import type { Db } from 'mongodb';
 import { AuthError, isUnlocked, verifyApiKey } from './auth';
 import { getDb } from './db';
 import { IngestError } from './events';
-import type { NowPlaying } from './events';
+import type { NowPlaying, SongMetaLookup } from './events';
 import { RosterError } from './players';
 import { allow } from './ratelimit';
+import { resolveSongMeta } from './songMeta';
 import { cachedNowPlaying, httpSpotifyClient } from './spotify';
 import { NotFound } from './stats';
 import type { ApiKeyDoc, EventType } from './types';
@@ -31,8 +32,11 @@ export async function getCtx(): Promise<Ctx> {
   return { db: await getDb(), now: new Date() };
 }
 
-/** Deps for event ingestion. nowPlaying resolves to null when Spotify is not configured. */
-export function makeDeps(ctx: Ctx): { clock: () => Date; nowPlaying: NowPlaying } {
+/**
+ * Deps for event ingestion. nowPlaying resolves to null when Spotify is not configured; songMeta
+ * (Spotify Search with an app token, for helper-reported songs) needs only the client id and secret.
+ */
+export function makeDeps(ctx: Ctx): { clock: () => Date; nowPlaying: NowPlaying; songMeta?: SongMetaLookup } {
   const id = process.env.SPOTIFY_CLIENT_ID ?? '';
   const secret = process.env.SPOTIFY_CLIENT_SECRET ?? '';
   const tokenKey = process.env.RL_TOKEN_KEY ?? '';
@@ -42,6 +46,9 @@ export function makeDeps(ctx: Ctx): { clock: () => Date; nowPlaying: NowPlaying 
       id && secret && tokenKey
         ? () => cachedNowPlaying(ctx.db, httpSpotifyClient(id, secret), tokenKey, ctx.now)
         : async () => null,
+    ...(id && secret && {
+      songMeta: (title: string, artist: string) => resolveSongMeta(ctx.db, title, artist, { now: ctx.now }),
+    }),
   };
 }
 

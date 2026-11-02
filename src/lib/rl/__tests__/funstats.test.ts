@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { collections } from '../db';
 import { funStats } from '../funstats';
+import { sessionStats } from '../stats';
 import { NIGHT, EXTRA_SESSION_ID, seedMatches, seedNight } from './fixtures';
 import { useTestDb } from './testdb';
 
@@ -13,10 +14,11 @@ describe('funStats', () => {
     await seedNight(db);
     await seedMatches(db);
     const f = await funStats(db, all, NIGHT.now);
-    expect(f.demoGrid.actors).toEqual(['ashton', 'jake', 'mason', 'sam', 'vandy', 'zach', 'teammate', 'opponent']);
+    expect(f.demoGrid.actors).toEqual(['ashton', 'jake', 'mason', 'sam', 'vandy', 'zach', 'opponent']);
     const i = (a: string) => f.demoGrid.actors.indexOf(a);
     expect(f.demoGrid.counts[i('zach')][i('opponent')]).toBe(3);
-    expect(f.demoGrid.counts[i('zach')][i('teammate')]).toBe(1);
+    expect(f.demoGrid.counts).toHaveLength(7);
+    for (const row of f.demoGrid.counts) expect(row).toHaveLength(7);
     expect(f.demoGrid.counts[i('opponent')][i('zach')]).toBe(2);
     expect(f.demoGrid.counts[i('ashton')][i('opponent')]).toBe(1);
     expect(f.demoGrid.counts[i('zach')][i('zach')]).toBe(0);
@@ -84,6 +86,31 @@ describe('funStats', () => {
     expect(f.nightOfTheNight.find((r) => r.actor === 'jake')).toBeUndefined();
   });
 
+  it('nightOfTheNight ignores imported seasons; imported goals still count all-time', async () => {
+    const db = getDb();
+    await seedNight(db);
+    await seedMatches(db);
+    const at = new Date('2021-12-20T02:00:00Z');
+    const imported = (actor: string, k: number) => ({
+      type: 'goal' as const, actor, song: 'Song A', artist: 'Artist A', songKey: 'song a|artist a', songResolved: true,
+      occurredAt: new Date(at.getTime() + k), sessionId: 'christmas-league-2021', source: 'import' as const,
+      dedupeKey: `import:2021:song a:artist a:${actor}:${k}`, createdAt: new Date(),
+    });
+    await collections(db).events.insertMany([
+      ...Array.from({ length: 20 }, (_, k) => imported('zach', k)),
+      ...Array.from({ length: 9 }, (_, k) => imported('mason', k)),
+    ]);
+    const f = await funStats(db, all, NIGHT.now);
+    const row = (a: string) => f.nightOfTheNight.find((r) => r.actor === a);
+    expect(row('zach')).toMatchObject({ sessionId: NIGHT.sessionId, total: 7 });
+    expect(row('mason')).toBeUndefined();
+    expect(f.nightOfTheNight.map((r) => r.sessionId)).not.toContain('christmas-league-2021');
+    const s = await sessionStats(db, all, NIGHT.now);
+    expect(s.leaderboard.find((r) => r.actor === 'zach')!.goals).toBe(NIGHT.goals.zach + 20);
+    expect(s.leaderboard.find((r) => r.actor === 'mason')!.goals).toBe(9);
+    expect(s.songs.find((x) => x.song === 'Song A')!.byActor.zach).toBe(2 + 20);
+  });
+
   it('respects session scope and handles empty data', async () => {
     const db = getDb();
     await seedNight(db);
@@ -116,5 +143,12 @@ describe('funStats', () => {
     expect(f.brickWall).toMatchObject({ actor: 'zach', saves: 3 });
     expect(f.playmaker.top).toEqual({ actor: 'ashton', displayName: 'Ashton', count: 2 });
     expect(f.playmaker.pair).toEqual({ assister: 'ashton', scorer: 'zach', count: 2 });
+    const people = [
+      ...f.demoLeaderboard.map((r) => r.actor),
+      ...f.demoGrid.actors,
+      ...f.nightOfTheNight.map((r) => r.actor),
+    ];
+    expect(people).not.toContain('teammate');
+    expect(f.demoLeaderboard.map((r) => r.displayName)).not.toContain('Teammate');
   });
 });

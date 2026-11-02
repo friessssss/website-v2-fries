@@ -19,32 +19,28 @@ describe('seriesColor', () => {
     expect(colors).toEqual([ink(0.92), ink(0.76), ink(0.62), ink(0.48), ink(0.36), ink(0.26)]);
     expect(new Set(colors).size).toBe(6);
   });
-
-  it('gives Teammate its own fixed colour regardless of index', () => {
-    expect(seriesColor(0, 'teammate')).toBe(seriesColor(4, 'Teammate'));
-  });
 });
 
 describe('seriesOrder', () => {
-  it('orders active roster players by display name, then Teammate, independent of goals', () => {
+  it('orders active roster players by display name, independent of goals, with no Teammate series', () => {
     const roster = [
       { slug: 'zach', displayName: 'Zach', active: true },
       { slug: 'ashton', displayName: 'Ashton', active: true },
       { slug: 'old', displayName: 'Old', active: false },
       { slug: 'jake', displayName: 'Jake' },
     ];
-    expect(seriesOrder(roster)).toEqual(['Ashton', 'Jake', 'Zach', 'Teammate']);
+    expect(seriesOrder(roster)).toEqual(['Ashton', 'Jake', 'Zach']);
+    expect(seriesOrder(roster, ['Old', 'Opponent'])).toEqual(['Ashton', 'Jake', 'Zach', 'Old']);
   });
 });
 
 describe('lineDash', () => {
-  it('is solid for the first three players and patterned from index 3, Teammate dashed', () => {
+  it('is solid for the first three players and patterned from index 3', () => {
     expect(lineDash(0, 'a')).toEqual([]);
     expect(lineDash(2, 'c')).toEqual([]);
     const later = [3, 4, 5].map((i) => JSON.stringify(lineDash(i, `p${i}`)));
     expect(new Set(later).size).toBe(3);
     expect(later).not.toContain('[]');
-    expect(lineDash(0, 'Teammate').length).toBeGreaterThan(0);
     expect(lineDash(0, 'opponent')).toEqual([]);
   });
 });
