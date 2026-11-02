@@ -111,3 +111,19 @@ func TestFind(t *testing.T) {
 		t.Fatal("expected not found")
 	}
 }
+
+func TestFindAll(t *testing.T) {
+	cands := []string{"/a", "/b", "/c", "/B/", "/d"}
+	have := map[string]bool{
+		filepath.Join("/b", "TAGame", "Config"): true,
+		filepath.Join("/B", "TAGame", "Config"): true,
+		filepath.Join("/c", "TAGame", "Config"): true,
+	}
+	got := FindAll(cands, func(p string) bool { return have[filepath.Clean(p)] })
+	if len(got) != 2 || got[0] != "/b" || got[1] != "/c" {
+		t.Fatalf("got %q", got)
+	}
+	if got := FindAll(cands, func(string) bool { return false }); len(got) != 0 {
+		t.Fatal(got)
+	}
+}

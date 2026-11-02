@@ -91,6 +91,17 @@ func (st *SettingsStore) Once(key string) bool {
 	return true
 }
 
+// Forget removes key so the next Once(key) returns true again.
+func (st *SettingsStore) Forget(key string) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.s.Shown[key] {
+		return
+	}
+	delete(st.s.Shown, key)
+	_ = SaveSettings(st.path, st.s)
+}
+
 // SaveSettings writes path atomically, creating its directory.
 func SaveSettings(path string, s Settings) error {
 	b, err := json.Marshal(s)

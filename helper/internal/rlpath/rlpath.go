@@ -159,3 +159,22 @@ func Find(cands []string, exists func(string) bool) (string, bool) {
 	}
 	return "", false
 }
+
+// FindAll returns every candidate that contains TAGame/Config, in order,
+// skipping duplicates (compared case-insensitively, ignoring slashes), so a
+// PC with both a Steam and an Epic install gets both patched.
+func FindAll(cands []string, exists func(string) bool) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range cands {
+		k := key(c)
+		if c == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		if exists(filepath.Join(c, "TAGame", "Config")) {
+			out = append(out, c)
+		}
+	}
+	return out
+}

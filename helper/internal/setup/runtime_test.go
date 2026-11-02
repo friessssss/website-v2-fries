@@ -648,3 +648,13 @@ func TestControllerRepairClearsSavedPause(t *testing.T) {
 		t.Fatal(saved)
 	}
 }
+
+func TestSettingsStoreForget(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.json")
+	st := OpenSettings(p)
+	st.Once("k")
+	st.Forget("k")
+	if !OpenSettings(p).Once("k") {
+		t.Fatal("forgotten key must be new again after reload")
+	}
+}

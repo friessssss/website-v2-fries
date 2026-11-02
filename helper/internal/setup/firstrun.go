@@ -6,6 +6,8 @@ package setup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"path/filepath"
@@ -84,23 +86,23 @@ func Pair(ctx context.Context, d Dialogs, p Pairer, label string, logf Logf) (ke
 	return "", false
 }
 
-// FindRL returns the first candidate that is a Rocket League install. If none
-// is and ask is true, it shows the folder picker until the user picks a valid
-// folder or cancels.
-func FindRL(cands []string, exists func(string) bool, d Dialogs, ask bool) (string, bool) {
-	if dir, ok := rlpath.Find(cands, exists); ok {
-		return dir, true
+// FindRL returns every candidate that is a Rocket League install (Steam and
+// Epic can both be present). If none is and ask is true, it shows the folder
+// picker until the user picks a valid folder or cancels.
+func FindRL(cands []string, exists func(string) bool, d Dialogs, ask bool) ([]string, bool) {
+	if dirs := rlpath.FindAll(cands, exists); len(dirs) > 0 {
+		return dirs, true
 	}
 	if !ask {
-		return "", false
+		return nil, false
 	}
 	for {
 		dir, ok := d.AskRLFolder()
 		if !ok {
-			return "", false
+			return nil, false
 		}
 		if found, ok := rlpath.Find([]string{dir}, exists); ok {
-			return found, true
+			return []string{found}, true
 		}
 		d.Info(MsgNotRLFolder)
 	}
@@ -122,8 +124,16 @@ type IniDeps struct {
 	Elevate func(iniPath string) error
 	// Once returns true the first time it sees key (and remembers it).
 	Once func(key string) bool
-	Logf Logf
+	// Forget clears a Once key (optional). A successful elevated patch
+	// forgets its key so a later revert of the file can elevate again.
+	Forget func(key string)
+	Logf   Logf
 }
+
+// Elevation is a deferred elevated patch. It may show a UAC prompt, so it
+// runs after the tray is up (see RunElevations); it returns whether the file
+// changed and the notices to show after it.
+type Elevation func() (changed bool, notices []Notice)
 
 func diyStep(path string) string {
 	return " Set PacketSendRate=20 under [TAGame.MatchStatsExporter_TA] in " + path + " yourself, then restart Rocket League."
@@ -134,10 +144,16 @@ func NeedsAdminMsg(path string) string {
 	return "Rocket League's settings file needs permission to change. Right-click RLGoalTracker and choose Run as administrator once, or set PacketSendRate=20 in " + path + " yourself."
 }
 
-// EnableStatsAPI patches the Stats API ini in rlDir. If the file is not
-// writable it tries Elevate once (ever, per path). It never shows UI itself:
-// the returned notices are shown later by ShowNotices.
-func EnableStatsAPI(rlDir string, d IniDeps) (changed bool, notices []Notice) {
+// EnableStatsAPI patches the Stats API ini in rlDir. It never shows UI or a
+// UAC prompt itself: notices are shown later by ShowNotices, and if the file
+// is not writable and may be patched elevated, the returned Elevation (else
+// nil) does that.
+//
+// The elevation is offered once per path and file contents: a declined
+// prompt is not repeated for the same file, a file changed since (a Rocket
+// League update) gets a fresh attempt, and a successful patch re-arms so a
+// later revert can be patched again.
+func EnableStatsAPI(rlDir string, d IniDeps) (changed bool, notices []Notice, elev Elevation) {
 	logf := d.Logf
 	exists := func(p string) bool {
 		ok, err := d.FS.Exists(p)
@@ -151,43 +167,76 @@ func EnableStatsAPI(rlDir string, d IniDeps) (changed bool, notices []Notice) {
 	changed, err := statsini.Apply(path, d.FS)
 	if errors.Is(err, fs.ErrPermission) {
 		logf("stats ini: %s: %v", path, err)
-		changed, err = elevate(path, d)
+		tag := path + ":" + contentTag(path, d.FS)
+		adminNotice := []Notice{{Key: "ini-admin:" + tag, Msg: NeedsAdminMsg(path)}}
+		elevKey := "ini-elevate:" + tag
+		if d.Elevate == nil || !d.Once(elevKey) {
+			return false, adminNotice, nil
+		}
+		return false, nil, func() (bool, []Notice) {
+			if err := elevate(path, d); err != nil {
+				return false, adminNotice
+			}
+			if d.Forget != nil {
+				d.Forget(elevKey)
+			}
+			logf("stats ini: %s patched elevated", path)
+			return true, restartNotice(true, d)
+		}
 	}
 	switch {
 	case errors.Is(err, statsini.ErrUnsupportedEncoding):
 		logf("stats ini: %s: %v", path, err)
-		return false, []Notice{{Key: "ini-unsupported:" + path, Msg: MsgUnsupportedIni + diyStep(path)}}
-	case errors.Is(err, errNeedsAdmin):
-		return false, []Notice{{Key: "ini-admin:" + path, Msg: NeedsAdminMsg(path)}}
+		return false, []Notice{{Key: "ini-unsupported:" + path, Msg: MsgUnsupportedIni + diyStep(path)}}, nil
 	case err != nil:
 		logf("stats ini: %s: %v", path, err)
-		return false, []Notice{{Key: "ini-failed:" + path, Msg: MsgIniFailed + diyStep(path)}}
+		return false, []Notice{{Key: "ini-failed:" + path, Msg: MsgIniFailed + diyStep(path)}}, nil
 	}
 	logf("stats ini: %s changed=%v", path, changed)
-	if changed && d.RLRunning() {
-		notices = append(notices, Notice{Msg: MsgRestartRL})
-	}
-	return changed, notices
+	return changed, restartNotice(changed, d), nil
 }
 
-var errNeedsAdmin = errors.New("stats ini needs admin rights")
-
-// elevate runs the elevated patch at most once per path, then verifies the
-// file no longer needs a change.
-func elevate(path string, d IniDeps) (bool, error) {
-	if d.Elevate == nil || !d.Once("ini-elevate:"+path) {
-		return false, errNeedsAdmin
+func restartNotice(changed bool, d IniDeps) []Notice {
+	if changed && d.RLRunning() {
+		return []Notice{{Msg: MsgRestartRL}}
 	}
+	return nil
+}
+
+// contentTag is a short hash of the file's current contents ("" if it can't
+// be read), so once-keys follow the file through Rocket League updates.
+func contentTag(path string, fsys statsini.FS) string {
+	b, err := fsys.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+// elevate runs the elevated patch, then verifies the file no longer needs a
+// change.
+func elevate(path string, d IniDeps) error {
 	if err := d.Elevate(path); err != nil {
 		d.Logf("stats ini: elevated patch: %v", err)
-		return false, errNeedsAdmin
+		return err
 	}
 	again, err := statsini.Apply(path, d.FS)
 	if err != nil || again {
 		d.Logf("stats ini: still needs a change after elevated patch: %v", err)
-		return false, errNeedsAdmin
+		return errors.New("stats ini still needs a change")
 	}
-	return true, nil
+	return nil
+}
+
+// RunElevations runs each deferred elevation in turn and shows its notices
+// right after it. Call it from the tray's OnReady goroutine, never on the
+// startup path.
+func RunElevations(elevs []Elevation, once func(string) bool, show func(string), logf Logf) {
+	for _, e := range elevs {
+		_, ns := e()
+		ShowNotices(ns, once, show, logf)
+	}
 }
 
 // ShowNotices shows each notice, skipping once-keyed ones already shown.
