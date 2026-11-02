@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPollRunner } from './pollRunner';
 
 export function usePoll<T>(
   url: string,
@@ -8,36 +9,32 @@ export function usePoll<T>(
 ): { data: T | undefined; error: string | undefined; refresh(): void } {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
-  const inFlight = useRef(false);
-  const alive = useRef(true);
-
-  const load = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as T;
-      if (alive.current) {
-        setData(json);
-        setError(undefined);
-      }
-    } catch (err) {
-      if (alive.current) setError(err instanceof Error ? err.message : 'request failed');
-    } finally {
-      inFlight.current = false;
-    }
-  }, [url]);
+  const runner = useRef<ReturnType<typeof createPollRunner>>();
 
   useEffect(() => {
-    alive.current = true;
-    void load();
-    const id = setInterval(() => void load(), ms);
+    const r = createPollRunner(async (signal) => {
+      try {
+        const res = await fetch(url, { cache: 'no-store', signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as T;
+        if (signal.aborted) return;
+        setData(json);
+        setError(undefined);
+      } catch (err) {
+        if (signal.aborted) return;
+        setError(err instanceof Error ? err.message : 'request failed');
+      }
+    });
+    runner.current = r;
+    void r.request();
+    const id = setInterval(() => void r.request(), ms);
     return () => {
-      alive.current = false;
       clearInterval(id);
+      r.stop();
+      runner.current = undefined;
     };
-  }, [load, ms]);
+  }, [url, ms]);
 
-  return { data, error, refresh: () => void load() };
+  const refresh = useCallback(() => void runner.current?.request(), []);
+  return { data, error, refresh };
 }
