@@ -66,10 +66,9 @@ type SiteAPI interface {
 	Ping(ctx context.Context) error
 }
 
-// KeyStore persists the API key (winsys.SaveKey / DeleteKey).
+// KeyStore persists the API key (winsys.SaveKey, which overwrites).
 type KeyStore interface {
 	Save(k string) error
-	Delete() error
 }
 
 // Controller connects the app, tray menu and site at runtime. Its methods are
@@ -165,9 +164,7 @@ func (c *Controller) Repair(ctx context.Context) {
 	if !ok {
 		return
 	}
-	if err := c.Keys.Delete(); err != nil {
-		c.Logf("re-pair: delete old key: %v", err)
-	}
+	// Save overwrites the old key in place; never delete first.
 	if err := c.Keys.Save(key); err != nil {
 		c.Logf("re-pair: save key: %v", err)
 	}

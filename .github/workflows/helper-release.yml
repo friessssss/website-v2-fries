@@ -48,6 +48,9 @@ jobs:
         with:
           go-version: '1.24'
           cache-dependency-path: helper/go.sum
+      - name: Test (race)
+        working-directory: helper
+        run: go test -race ./...
       - name: Build
         id: build
         working-directory: helper
@@ -63,7 +66,7 @@ jobs:
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
           go build -trimpath \
-            -ldflags "-s -w -H windowsgui -X main.version=${VERSION} -X main.baseURL=https://zachrobertson.co" \
+            -ldflags "-s -w -H windowsgui -X main.version=${VERSION} -X main.baseURL=https://www.zachrobertson.co" \
             -o RLGoalTracker.exe .
           sha256sum RLGoalTracker.exe > RLGoalTracker.exe.sha256
           cat RLGoalTracker.exe.sha256

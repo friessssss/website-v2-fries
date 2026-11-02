@@ -243,7 +243,9 @@ func TestControllerRepairSuccess(t *testing.T) {
 	site := &fakeSite{fakePairer: fakePairer{key: "newkey"}}
 	c, _, a, keys := newCtl(&fakeDialogs{codes: []string{"ABC123"}}, site)
 	c.Repair(context.Background())
-	if keys.deleted != 1 || len(keys.saved) != 1 || keys.saved[0] != "newkey" {
+	// Save overwrites the stored key; deleting first could lose both keys
+	// if the save then failed (final review minor).
+	if keys.deleted != 0 || len(keys.saved) != 1 || keys.saved[0] != "newkey" {
 		t.Fatalf("keys %+v", keys)
 	}
 	if len(site.keys) != 1 || site.keys[0] != "newkey" || a.resumes.Load() != 1 {

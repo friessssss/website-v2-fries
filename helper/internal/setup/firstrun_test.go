@@ -546,3 +546,9 @@ func TestPatchIniExitCodes(t *testing.T) {
 		t.Fatal("missing file must fail", c)
 	}
 }
+
+func TestMsgAlreadyRunningCopy(t *testing.T) {
+	if MsgAlreadyRunning != "RL Goal Tracker is already running in your tray." {
+		t.Fatal(MsgAlreadyRunning)
+	}
+}

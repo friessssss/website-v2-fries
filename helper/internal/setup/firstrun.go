@@ -255,6 +255,8 @@ const (
 	MsgWelcome    = "RL Goal Tracker is running in your tray. Goals will log automatically while you play."
 	MsgRLNotFound = "Couldn't find Rocket League. Choose Find Rocket League from the tray menu to try again."
 	MsgRLFound    = "Found Rocket League. Goals will log automatically while you play."
+	// MsgAlreadyRunning answers a second launch while one is in the tray.
+	MsgAlreadyRunning = "RL Goal Tracker is already running in your tray."
 )
 
 // FirstRunNotice is the one-time message after the first setup.

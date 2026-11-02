@@ -29,7 +29,7 @@ import (
 // Set at build time with -ldflags "-X main.version=… -X main.baseURL=…".
 var (
 	version = "0.0.0-dev"
-	baseURL = "https://zachrobertson.co"
+	baseURL = "https://www.zachrobertson.co" // the canonical host: no redirect in front of the API
 )
 
 const (
@@ -54,7 +54,6 @@ func (dialogs) Info(msg string)                { winsys.Info(msg) }
 type keyStore struct{}
 
 func (keyStore) Save(k string) error { return winsys.SaveKey(k) }
-func (keyStore) Delete() error       { return winsys.DeleteKey() }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
@@ -106,7 +105,12 @@ func run() int {
 	}
 	release, ok, lockErr := winsys.SingleInstance(wait)
 	if lockErr == nil && !ok {
-		return 0 // already running
+		// A user double-clicking the exe again gets told where it is; a
+		// relaunch that timed out waiting for its parent exits quietly.
+		if !*relaunched {
+			winsys.Info(setup.MsgAlreadyRunning)
+		}
+		return 0
 	}
 	if release == nil {
 		release = func() {}
