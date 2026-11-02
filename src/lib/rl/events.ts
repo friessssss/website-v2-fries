@@ -1,7 +1,7 @@
 import { ObjectId, type Db, type Filter } from 'mongodb';
 import { collections } from './db';
 import { applyHeartbeat, applyMatchEnd, applyMatchStart, ensureMatch, inferOurTeam } from './matches';
-import { normalizeName } from './normalize';
+import { normalizeName, songKey } from './normalize';
 import { addAlias, listPlayers, resolveActor } from './players';
 import { currentSessionId, resolveSessionId } from './sessions';
 import type { Actor, Clock, EventDoc, EventType, PlayerDoc, Track } from './types';
@@ -40,6 +40,7 @@ export class IngestError extends Error {
 const MAX_BATCH = 50;
 const LATE_MS = 120_000;
 const MANUAL_MERGE_MS = 30_000;
+const CLOCK_SKEW_S = 1.0;
 
 export function dedupeKey(e: {
   matchGuid: string;
@@ -108,6 +109,7 @@ function trackFields(track: Track | null | undefined) {
     progressMs: track?.progressMs ?? null,
     playlist: track?.playlist ?? null,
     playlistId: track?.playlistId ?? null,
+    ...(track && { songKey: songKey(track.song, track.artist) }),
   };
 }
 
@@ -217,6 +219,27 @@ export async function ingestBatch(
       }),
       createdAt: receivedAt,
     };
+
+    // Two helpers' sampled game clocks can differ by a second: treat a near-identical event as a duplicate.
+    // Names are normalised in code (Mongo cannot), so only the cheap fields go in the query.
+    const actorKey = normalizeName(actorIn.name);
+    const targetKey = targetIn ? normalizeName(targetIn.name) : '';
+    const near = await events
+      .find({
+        matchGuid: e.matchGuid,
+        type,
+        gameTime: { $gte: e.gameTime - CLOCK_SKEW_S, $lte: e.gameTime + CLOCK_SKEW_S },
+      })
+      .toArray();
+    if (
+      near.some(
+        (n) =>
+          normalizeName(n.actorInGame ?? '') === actorKey && normalizeName(n.targetInGame ?? '') === targetKey,
+      )
+    ) {
+      results.push({ status: 'duplicate' });
+      continue;
+    }
 
     try {
       const { insertedId } = await events.insertOne(doc);
@@ -332,6 +355,7 @@ export async function patchEvent(
   if (patch.song) {
     $set.song = patch.song.song;
     $set.artist = patch.song.artist;
+    $set.songKey = songKey(patch.song.song, patch.song.artist);
     $set.trackId = patch.song.trackId ?? null;
     // The old track's details no longer apply to the corrected song.
     $set.album = patch.song.album ?? null;

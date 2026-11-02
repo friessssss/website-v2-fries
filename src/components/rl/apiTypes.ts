@@ -60,6 +60,7 @@ export type SongStatRow = {
   trackId: string | null;
   song: string;
   artist: string;
+  albumArt: string | null;
   byActor: Record<string, number>;
   goalsFor: number;
   goalsAgainst: number;

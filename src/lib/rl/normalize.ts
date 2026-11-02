@@ -25,3 +25,8 @@ export function normalizeFirstArtist(s: string): string {
   const first = normalizeName(s).split(/\s*&\s*|\s*,\s*|\s+(?:feat\.?|ft\.?|featuring)\s+|\s+x\s+/)[0];
   return stripPunctuation(first);
 }
+
+/** Song identity for every song breakdown: normalised title + normalised first artist. */
+export function songKey(song: string, artist: string | null | undefined): string {
+  return `${normalizeSong(song)}|${normalizeFirstArtist(artist ?? '')}`;
+}

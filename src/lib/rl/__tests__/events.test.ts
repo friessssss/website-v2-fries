@@ -71,6 +71,48 @@ describe('events', () => {
     expect((await send(deps, [goal({ gameTime: 182.40001 })], key)).map((r) => r.status)).toEqual(['duplicate']);
   });
 
+  describe('clock-skew tolerance', () => {
+    const demo = (gameTime: number): HelperEvent => ({
+      kind: 'demo', matchGuid: GUID, at: NOW.toISOString(), gameTime,
+      attacker: { name: 'Fries', team: 0 }, victim: { name: 'xXRando', team: 1 },
+    });
+    const save = (name: string, gameTime: number): HelperEvent => ({
+      kind: 'save', matchGuid: GUID, at: NOW.toISOString(), gameTime, player: { name, team: 0 },
+    });
+
+    it('records a demo reported at 109 and 110 once', async () => {
+      await withMatch();
+      const { deps, key } = setup(db);
+      expect((await send(deps, [demo(109)], key)).map((r) => r.status)).toEqual(['recorded']);
+      expect((await send(deps, [demo(110)], key)).map((r) => r.status)).toEqual(['duplicate']);
+      expect(await collections(db()).events.countDocuments({})).toBe(1);
+    });
+
+    it('records a demo reported 2s apart twice', async () => {
+      await withMatch();
+      const { deps, key } = setup(db);
+      await send(deps, [demo(109)], key);
+      expect((await send(deps, [demo(111)], key)).map((r) => r.status)).toEqual(['recorded']);
+      expect(await collections(db()).events.countDocuments({})).toBe(2);
+    });
+
+    it('records saves by different players at the same time twice', async () => {
+      await withMatch();
+      const { deps, key } = setup(db);
+      const out = await send(deps, [save('Fries', 50), save('Ash', 50)], key);
+      expect(out.map((r) => r.status)).toEqual(['recorded', 'recorded']);
+      expect(await collections(db()).events.countDocuments({})).toBe(2);
+    });
+
+    it('records a goal reported at 156 and 157 once', async () => {
+      await withMatch();
+      const { deps, key } = setup(db);
+      expect((await send(deps, [goal({ gameTime: 156 })], key)).map((r) => r.status)).toEqual(['recorded']);
+      expect((await send(deps, [goal({ gameTime: 157 })], key)).map((r) => r.status)).toEqual(['duplicate']);
+      expect(await collections(db()).events.countDocuments({})).toBe(1);
+    });
+  });
+
   it('records goal with actor, song and resolved flag', async () => {
     await withMatch();
     const { deps, key } = setup(db);
@@ -362,8 +404,8 @@ describe('events', () => {
     const { deps, key } = setup(db);
     await send(deps, [
       goal({ gameTime: 1, scorer: { name: 'Rando', team: 1 } }),
-      goal({ gameTime: 2, scorer: { name: 'rando', team: 1 } }),
-      goal({ gameTime: 3 }),
+      goal({ gameTime: 20, scorer: { name: 'rando', team: 1 } }),
+      goal({ gameTime: 40 }),
     ], key);
     expect(await recentUnknownNames(db())).toEqual([{ name: 'Rando', count: 2 }]);
   });

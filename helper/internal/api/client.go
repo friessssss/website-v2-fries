@@ -23,13 +23,15 @@ const (
 var (
 	// ErrUnauthorized means the API key was rejected (401). Stop and re-pair.
 	ErrUnauthorized = errors.New("api: unauthorized")
-	// ErrRetryable means a network error, 429 or 5xx. Retry with backoff.
+	// ErrRetryable means a network error, a redirect on a POST, or any status
+	// other than 401, 400 and 422. Retry with backoff.
 	ErrRetryable = errors.New("api: retryable")
 	// ErrCodeExpired means the pairing code is invalid or expired.
 	ErrCodeExpired = errors.New("api: pairing code expired")
 )
 
-// ErrRejected is any other 4xx. Retrying will not help. Use errors.As.
+// ErrRejected is a 400 or 422: the server refused the request itself (for
+// events: a bad event). Retrying will not help. Use errors.As.
 type ErrRejected struct {
 	Status int
 	Body   string // truncated to 500 bytes
@@ -77,9 +79,16 @@ func (c *Client) do(ctx context.Context, method, path string, body any, auth boo
 	if auth {
 		req.Header.Set("Authorization", "Bearer "+c.Key)
 	}
-	hc := c.HTTP
-	if hc == nil {
-		hc = http.DefaultClient
+	hc := http.DefaultClient
+	if c.HTTP != nil {
+		hc = c.HTTP
+	}
+	if method != http.MethodGet {
+		// Go would follow a 301/302 as a GET, silently dropping the body.
+		// Return the redirect response instead; classify retries it.
+		nc := *hc
+		nc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		hc = &nc
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -93,17 +102,21 @@ func (c *Client) do(ctx context.Context, method, path string, body any, auth boo
 	return resp.StatusCode, b, nil
 }
 
+// classify maps a non-success status to an error. Only 400 and 422 mean the
+// request itself is bad; anything else (403, 404, 405, 408, 413, 429, 3xx,
+// 5xx, …) points at the server or the network and is retried, so queued
+// events are never dropped because of a misconfigured or failing site.
 func classify(status int, body []byte) error {
-	switch {
-	case status == 401:
+	switch status {
+	case 401:
 		return ErrUnauthorized
-	case status == 429 || status >= 500:
-		return fmt.Errorf("%w: status %d", ErrRetryable, status)
-	default:
+	case 400, 422:
 		if len(body) > maxBodyKept {
 			body = body[:maxBodyKept]
 		}
 		return ErrRejected{Status: status, Body: string(body)}
+	default:
+		return fmt.Errorf("%w: status %d", ErrRetryable, status)
 	}
 }
 
@@ -152,6 +165,9 @@ func (c *Client) PostEvents(ctx context.Context, events []model.Event, sentAt ti
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("%w: bad response: %v", ErrRetryable, err)
 	}
+	if len(out.Results) != len(events) {
+		return nil, fmt.Errorf("%w: %d results for %d events", ErrRetryable, len(out.Results), len(events))
+	}
 	return out.Results, nil
 }
 
@@ -172,4 +188,17 @@ func (c *Client) Latest(ctx context.Context) (version, url string, err error) {
 		return "", "", fmt.Errorf("api: bad latest response: %v", err)
 	}
 	return out.Version, out.DownloadURL, nil
+}
+
+// Ping tells the site this helper is alive (keeps the live dot on between
+// matches). It answers 204; 401 returns ErrUnauthorized.
+func (c *Client) Ping(ctx context.Context) error {
+	status, body, err := c.do(ctx, http.MethodPost, "/api/rl/v1/ping", nil, true)
+	if err != nil {
+		return err
+	}
+	if status == 204 || status == 200 {
+		return nil
+	}
+	return classify(status, body)
 }

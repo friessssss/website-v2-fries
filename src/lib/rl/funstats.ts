@@ -1,6 +1,7 @@
 import type { Db } from 'mongodb';
 import { collections } from './db';
 import { listPlayers } from './players';
+import { SongDisplays } from './songGroups';
 import { resolveScope, type Scope } from './stats';
 import type { Actor, EventDoc } from './types';
 
@@ -22,9 +23,6 @@ export type FunStats = {
 export const WIN_RATE_MIN_MATCHES = 3;
 
 const SPECIAL_NAMES: Record<string, string> = { opponent: 'Opponent', teammate: 'Teammate' };
-
-const songKey = (s: { trackId?: string | null; song: string; artist?: string | null }) =>
-  s.trackId ?? `${s.song}||${s.artist ?? ''}`;
 
 function bump<K>(m: Map<K, number>, k: K): number {
   const n = (m.get(k) ?? 0) + 1;
@@ -68,16 +66,18 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
   }
 
   // Demo anthem.
-  const anthems = new Map<string, { song: string; artist: string; count: number }>();
+  const anthemSongs = new SongDisplays();
+  const anthems = new Map<string, number>();
   for (const e of demos) {
     if (e.song === null) continue;
-    const k = songKey({ trackId: e.trackId, song: e.song, artist: e.artist });
-    const row = anthems.get(k) ?? { song: e.song, artist: e.artist ?? '', count: 0 };
-    row.count++;
-    anthems.set(k, row);
+    const k = anthemSongs.add({ ...e, song: e.song, at: e.occurredAt });
+    bump(anthems, k);
   }
   const demoAnthem =
-    Array.from(anthems.values()).sort((a, b) => b.count - a.count || a.song.localeCompare(b.song))[0] ?? null;
+    Array.from(anthems, ([k, count]) => {
+      const { song, artist } = anthemSongs.get(k);
+      return { song, artist, count };
+    }).sort((a, b) => b.count - a.count || a.song.localeCompare(b.song))[0] ?? null;
 
   // Brick wall: most saves by one actor in one match.
   const saveGroups = new Map<string, { actor: Actor; matchGuid: string; saves: number; first: Date }>();
@@ -120,30 +120,35 @@ export async function funStats(db: Db, scope: Scope, now: Date): Promise<FunStat
     )[0] ?? null;
 
   // Victory song and win rate by song.
-  const victories = new Map<string, { song: string; artist: string; wins: number }>();
-  const perSong = new Map<string, { song: string; artist: string; wins: number; matches: number }>();
+  const victorySongs = new SongDisplays();
+  const matchSongs = new SongDisplays();
+  const victories = new Map<string, number>();
+  const perSong = new Map<string, { wins: number; matches: number }>();
   for (const m of matches) {
     if (m.result === 'win' && m.victorySong) {
-      const k = songKey(m.victorySong);
-      const v = victories.get(k) ?? { song: m.victorySong.song, artist: m.victorySong.artist, wins: 0 };
-      v.wins++;
-      victories.set(k, v);
+      bump(victories, victorySongs.add({ ...m.victorySong, at: m.endedAt ?? m.startedAt }));
     }
     if (!m.result) continue;
     const seen = new Set<string>();
     for (const s of m.songs) {
-      const k = songKey(s);
+      const k = matchSongs.add({ ...s, at: s.firstSeenAt });
       if (seen.has(k)) continue;
       seen.add(k);
-      const row = perSong.get(k) ?? { song: s.song, artist: s.artist, wins: 0, matches: 0 };
+      const row = perSong.get(k) ?? { wins: 0, matches: 0 };
       row.matches++;
       if (m.result === 'win') row.wins++;
       perSong.set(k, row);
     }
   }
   const victorySong =
-    Array.from(victories.values()).sort((a, b) => b.wins - a.wins || a.song.localeCompare(b.song))[0] ?? null;
-  const winRateBySong = Array.from(perSong.values())
+    Array.from(victories, ([k, wins]) => {
+      const { song, artist } = victorySongs.get(k);
+      return { song, artist, wins };
+    }).sort((a, b) => b.wins - a.wins || a.song.localeCompare(b.song))[0] ?? null;
+  const winRateBySong = Array.from(perSong, ([k, r]) => {
+    const { song, artist } = matchSongs.get(k);
+    return { song, artist, ...r };
+  })
     .filter((r) => r.matches >= WIN_RATE_MIN_MATCHES)
     .map((r) => ({ ...r, rate: r.wins / r.matches }))
     .sort((a, b) => b.rate - a.rate || b.matches - a.matches || a.song.localeCompare(b.song));

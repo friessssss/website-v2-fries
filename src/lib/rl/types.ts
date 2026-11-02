@@ -42,6 +42,8 @@ export interface EventDoc {
   progressMs?: number | null;
   playlist?: string | null;
   playlistId?: string | null;
+  /** `songKey(song, artist)`; absent when song is null. */
+  songKey?: string;
   songResolved: boolean;
   occurredAt: Date;
   sessionId: string;
@@ -63,8 +65,8 @@ export interface MatchDoc {
   ourScore?: number;
   theirScore?: number;
   result?: 'win' | 'loss';
-  songs: { trackId: string | null; song: string; artist: string; firstSeenAt: Date }[];
-  victorySong?: { trackId: string | null; song: string; artist: string };
+  songs: { trackId: string | null; song: string; artist: string; songKey?: string; firstSeenAt: Date }[];
+  victorySong?: { trackId: string | null; song: string; artist: string; songKey?: string };
 }
 
 export interface SpotifyAccountDoc {

@@ -1,0 +1,2 @@
+# Keep CRLF/LF fixtures byte-exact on Windows checkouts.
+helper/testdata/** -text

@@ -1,16 +1,21 @@
 import type { Db } from 'mongodb';
 import { collections } from './db';
-import type { EventDoc } from './types';
+import { SongDisplays } from './songGroups';
 
 export type TimeFilter = 'week' | 'month' | '3months' | 'year' | 'lifetime' | string;
 export type GroupBy = 'hour' | 'day' | 'week' | 'month' | string;
 
 type LegacyGoal = {
   player: string;
+  /** Display spelling of the goal's song group. */
   song: string;
   artist: string;
   timestamp: string;
   playlist?: string;
+  /** Song group (`songKey`) and artist group (its normalised first artist) with its display name. */
+  songKey: string;
+  artistKey: string;
+  artistName: string;
 };
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,17 +43,39 @@ async function loadGoals(
   if (playlistFilter) filter.playlist = playlistFilter;
 
   const [events, players] = await Promise.all([
-    c.events.find(filter).sort({ occurredAt: 1, _id: 1 }).toArray(),
+    c.events
+      .find(filter, {
+        projection: { actor: 1, song: 1, artist: 1, trackId: 1, albumArt: 1, songKey: 1, occurredAt: 1, playlist: 1 },
+      })
+      .sort({ occurredAt: 1, _id: 1 })
+      .toArray(),
     c.players.find({}).toArray(),
   ]);
   const names = new Map(players.map((p) => [p.slug, p.displayName]));
-  return events.map((e: EventDoc) => ({
-    player: ACTOR_NAMES[e.actor] ?? names.get(e.actor) ?? e.actor,
-    song: e.song ?? 'Unknown',
-    artist: e.artist ?? 'Unknown',
-    timestamp: e.occurredAt.toISOString(),
-    playlist: e.playlist || undefined,
-  }));
+  // Rows group by song key and by first artist; each group shows one spelling (see SongDisplays).
+  const songs = new SongDisplays();
+  const artists = new SongDisplays();
+  const rows = events.map((e) => {
+    const song = e.song ?? 'Unknown';
+    const artist = e.artist ?? 'Unknown';
+    const sighting = { trackId: e.trackId, albumArt: e.albumArt, at: e.occurredAt };
+    const songKey = songs.add({ ...sighting, song, artist, songKey: e.song === null ? null : e.songKey });
+    const artistKey = artists.add({ ...sighting, song: artist, artist: null, songKey: songKey.slice(songKey.lastIndexOf('|') + 1) });
+    return { e, songKey, artistKey };
+  });
+  return rows.map(({ e, songKey, artistKey }) => {
+    const { song, artist } = songs.get(songKey);
+    return {
+      player: ACTOR_NAMES[e.actor] ?? names.get(e.actor) ?? e.actor,
+      song,
+      artist,
+      timestamp: e.occurredAt.toISOString(),
+      playlist: e.playlist || undefined,
+      songKey,
+      artistKey,
+      artistName: artists.get(artistKey).song,
+    };
+  });
 }
 
 type Agg = {
@@ -87,18 +114,17 @@ export async function analyticsPayload(
   const songMap = new Map<string, Agg & { song: string; artist: string; playlist?: string }>();
   const artistMap = new Map<string, Agg & { artist: string; songs: string[] }>();
   for (const g of goals) {
-    const songKey = `${g.song} - ${g.artist}`;
-    let s = songMap.get(songKey);
+    let s = songMap.get(g.songKey);
     if (!s) {
       s = { song: g.song, artist: g.artist, ...newAgg(), playlist: g.playlist };
-      songMap.set(songKey, s);
+      songMap.set(g.songKey, s);
     }
     tally(s, g.player);
 
-    let a = artistMap.get(g.artist);
+    let a = artistMap.get(g.artistKey);
     if (!a) {
-      a = { artist: g.artist, ...newAgg(), songs: [] };
-      artistMap.set(g.artist, a);
+      a = { artist: g.artistName, ...newAgg(), songs: [] };
+      artistMap.set(g.artistKey, a);
     }
     tally(a, g.player);
     if (!a.songs.includes(g.song)) a.songs.push(g.song);
