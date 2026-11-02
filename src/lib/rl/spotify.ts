@@ -5,6 +5,8 @@ import { decryptSecret, encryptSecret } from './crypto';
 import type { SpotifyAccountDoc, Track } from './types';
 
 const TIMEOUT_MS = 2500;
+/** Shorter than the per-account deadline, so a lease winner can still store the tokens it got. */
+const TOKEN_TIMEOUT_MS = 1500;
 const REFRESH_SKEW_MS = 30_000;
 const NOW_PLAYING_TTL_MS = 3000;
 const PLAYLIST_TTL_MS = 60 * 60 * 1000;
@@ -18,6 +20,8 @@ const FLAG_AFTER_FAILURES = 3;
 const FLAG_SPAN_MS = 10 * 60 * 1000;
 /** A needs_relink account is probed with a refresh at most this often. */
 const RELINK_PROBE_MS = 10 * 60 * 1000;
+/** After an invalid_grant, no refresh is attempted for the account for this long. */
+const AUTH_FAILURE_BACKOFF_MS = 60_000;
 
 export type RawPlaying = {
   isPlaying: boolean;
@@ -72,7 +76,7 @@ export function httpSpotifyClient(
         Authorization: `Basic ${basic}`,
       },
       body: new URLSearchParams(params),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
     });
     if (!res.ok) {
       let code = '';
@@ -189,7 +193,13 @@ export async function linkAccount(
         accessTokenExpiresAt: new Date(now.getTime() + tokens.expiresIn * 1000),
         status: 'ok',
       },
-      $unset: { authFailures: '', firstAuthFailureAt: '', lastRelinkProbeAt: '', refreshLockUntil: '' },
+      $unset: {
+        authFailures: '',
+        firstAuthFailureAt: '',
+        lastAuthFailureAt: '',
+        lastRelinkProbeAt: '',
+        refreshLockUntil: '',
+      },
       $setOnInsert: { spotifyUserId: profile.id, createdAt: now },
     },
     { upsert: true, returnDocument: 'after' },
@@ -261,9 +271,16 @@ async function refreshedToken(
   { rejected, force = false }: { rejected?: string; force?: boolean } = {},
 ): Promise<string | null> {
   const accounts = collections(db).spotifyAccounts;
+  // Spotify just said invalid_grant for this account: do not ask again so soon.
+  const backoffSince = new Date(now.getTime() - AUTH_FAILURE_BACKOFF_MS);
+  if (account.lastAuthFailureAt && account.lastAuthFailureAt.getTime() > backoffSince.getTime()) return null;
   const lease = await accounts.findOneAndUpdate(
-    // Free when absent, null or expired.
-    { _id: account._id, refreshLockUntil: { $not: { $gt: now } } },
+    // Free when absent, null or expired; and not backing off (another request may just have failed).
+    {
+      _id: account._id,
+      refreshLockUntil: { $not: { $gt: now } },
+      lastAuthFailureAt: { $not: { $gt: backoffSince } },
+    },
     { $set: { refreshLockUntil: new Date(now.getTime() + REFRESH_LEASE_MS) } },
     { returnDocument: 'after' },
   );
@@ -307,7 +324,7 @@ async function refreshedToken(
     const failures = (lease.authFailures ?? 0) + 1;
     const first = lease.firstAuthFailureAt ?? now;
     const flag = failures >= FLAG_AFTER_FAILURES && now.getTime() - first.getTime() >= FLAG_SPAN_MS;
-    const set: Partial<SpotifyAccountDoc> = { authFailures: failures, firstAuthFailureAt: first };
+    const set: Partial<SpotifyAccountDoc> = { authFailures: failures, firstAuthFailureAt: first, lastAuthFailureAt: now };
     if (flag) Object.assign(set, { status: 'needs_relink', lastRelinkProbeAt: now });
     try {
       await accounts.updateOne({ _id: account._id }, { $set: set, ...release });
@@ -325,7 +342,16 @@ async function refreshedToken(
   if (refreshed.refreshToken) set.refreshTokenEnc = encryptSecret(refreshed.refreshToken, tokenKey);
   await accounts.updateOne(
     { _id: account._id },
-    { $set: set, $unset: { refreshLockUntil: '', authFailures: '', firstAuthFailureAt: '', lastRelinkProbeAt: '' } },
+    {
+      $set: set,
+      $unset: {
+        refreshLockUntil: '',
+        authFailures: '',
+        firstAuthFailureAt: '',
+        lastAuthFailureAt: '',
+        lastRelinkProbeAt: '',
+      },
+    },
   );
   return refreshed.accessToken;
 }

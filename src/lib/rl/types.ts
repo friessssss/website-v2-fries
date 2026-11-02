@@ -104,6 +104,8 @@ export interface SpotifyAccountDoc {
   /** Consecutive refresh rejections (invalid_grant) since the last success, and when the run began. */
   authFailures?: number;
   firstAuthFailureAt?: Date;
+  /** The latest invalid_grant: no refresh is attempted for 60 s after it. */
+  lastAuthFailureAt?: Date;
   /** Last refresh attempt on a needs_relink account (probed at most every 10 minutes). */
   lastRelinkProbeAt?: Date;
   createdAt: Date;

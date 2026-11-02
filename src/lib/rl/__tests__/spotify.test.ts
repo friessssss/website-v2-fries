@@ -176,6 +176,49 @@ describe('spotify', () => {
     spy.mockRestore();
   });
 
+  it('after an invalid_grant, skips refreshing that account for 60 s', async () => {
+    await seed('bad', { expired: true, refresh: 'bad-refresh' });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeClient({});
+    await pickNowPlaying(db, client, key, NOW);
+    expect(calls.refresh).toHaveLength(1);
+    expect((await account('bad'))?.lastAuthFailureAt).toEqual(NOW);
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 30_000));
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 59_999));
+    expect(calls.refresh).toHaveLength(1);
+    expect((await account('bad'))?.authFailures).toBe(1);
+    await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 60_000));
+    expect(calls.refresh).toHaveLength(2);
+    expect((await account('bad'))?.lastAuthFailureAt).toEqual(new Date(NOW.getTime() + 60_000));
+    spy.mockRestore();
+  });
+
+  it('the 60 s back-off still uses a stored access token that is fresh', async () => {
+    await seed('a1', { extra: { lastAuthFailureAt: NOW, authFailures: 1, firstAuthFailureAt: NOW } });
+    const { client, calls } = fakeClient({ 'tok-a1': playing('A') });
+    expect((await pickNowPlaying(db, client, key, new Date(NOW.getTime() + 1000)))?.track.trackId).toBe('A');
+    expect(calls.refresh).toHaveLength(0);
+  });
+
+  it('a successful refresh clears lastAuthFailureAt', async () => {
+    await seed('a1', { expired: true, extra: { authFailures: 1, firstAuthFailureAt: min(-2), lastAuthFailureAt: min(-2) } });
+    const { client } = fakeClient({ 'at-r-a1': playing('A') });
+    expect((await pickNowPlaying(db, client, key, NOW))?.track.trackId).toBe('A');
+    expect((await account('a1'))?.lastAuthFailureAt).toBeUndefined();
+  });
+
+  it('the http client gives the token request 1.5 s, inside the 2.5 s per-account deadline', async () => {
+    const hanging = (async (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      })) as typeof fetch;
+    const started = Date.now();
+    await expect(httpSpotifyClient('id', 'secret', hanging).refresh('rt')).rejects.toBeDefined();
+    const took = Date.now() - started;
+    expect(took).toBeGreaterThanOrEqual(1400);
+    expect(took).toBeLessThan(2400);
+  });
+
   it('a successful refresh resets the failure count', async () => {
     await seed('a1', { expired: true, extra: { authFailures: 2, firstAuthFailureAt: min(-30) } });
     const { client } = fakeClient({ 'at-r-a1': playing('A') });
@@ -456,7 +499,7 @@ describe('spotify', () => {
     await linkAccount(db, client, { playerSlug: 'a1', code: 'c', redirectUri: 'http://x', tokenKey: key });
     await collections(db).spotifyAccounts.updateOne(
       {},
-      { $set: { status: 'needs_relink', authFailures: 5, firstAuthFailureAt: NOW, lastRelinkProbeAt: NOW } },
+      { $set: { status: 'needs_relink', authFailures: 5, firstAuthFailureAt: NOW, lastRelinkProbeAt: NOW, lastAuthFailureAt: NOW } },
     );
     await linkAccount(db, client, { playerSlug: 'a1', code: 'c', redirectUri: 'http://x', tokenKey: key });
     const doc = await collections(db).spotifyAccounts.findOne({});
@@ -464,6 +507,7 @@ describe('spotify', () => {
     expect(doc?.authFailures).toBeUndefined();
     expect(doc?.firstAuthFailureAt).toBeUndefined();
     expect(doc?.lastRelinkProbeAt).toBeUndefined();
+    expect(doc?.lastAuthFailureAt).toBeUndefined();
   });
 
   it('lists accounts without secrets and unlinks', async () => {
