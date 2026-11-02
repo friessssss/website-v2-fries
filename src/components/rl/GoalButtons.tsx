@@ -7,8 +7,17 @@ import { useUnlocked } from './useUnlocked';
 
 const CHIP = 'rl-focus rl-chip px-3 py-1.5 font-mono text-xs leading-4 disabled:opacity-50';
 
-export default function GoalButtons({ players, onLogged }: { players: Player[]; onLogged: () => void }) {
-  const { unlocked } = useUnlocked();
+/** `players` is undefined while the roster is loading or has failed (`rosterError`). */
+export default function GoalButtons({
+  players,
+  rosterError,
+  onLogged,
+}: {
+  players: Player[] | undefined;
+  rosterError: boolean;
+  onLogged: () => void;
+}) {
+  const { unlocked, recheck } = useUnlocked();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
@@ -19,6 +28,10 @@ export default function GoalButtons({ players, onLogged }: { players: Player[]; 
     setMessage(undefined);
     try {
       const res = await fetch(url, init);
+      if (res.status === 401) {
+        await recheck(); // cookie expired: the store flips to locked and the unlock prompt returns
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
       await after?.(res);
       onLogged();
@@ -43,11 +56,12 @@ export default function GoalButtons({ players, onLogged }: { players: Player[]; 
 
   return (
     <div className="flex flex-wrap items-center gap-2 md:justify-end">
-      {players.map((p) => (
+      {players?.map((p) => (
         <button key={p.slug} type="button" disabled={busy} onClick={() => log(p.slug)} className={`${CHIP} text-ink-70 hover:bg-white/10`}>
           {p.displayName}
         </button>
       ))}
+      {!players && rosterError && <span className="font-mono text-xs text-ink-70">Can&apos;t load players. Retrying.</span>}
       <button
         type="button"
         disabled={busy}
@@ -65,7 +79,7 @@ export default function GoalButtons({ players, onLogged }: { players: Player[]; 
         undo
       </button>
       {message && (
-        <p role="status" className="w-full font-mono md:text-right text-xs text-ink-70">
+        <p role="status" className="w-full font-mono text-xs text-ink-70 md:text-right">
           {message}
         </p>
       )}

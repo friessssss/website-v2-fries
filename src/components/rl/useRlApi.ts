@@ -3,12 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPollRunner } from './pollRunner';
 
+type Result<T> = { url: string; data?: T; error?: string };
+
+/**
+ * Polls `url` every `ms`. Data and error belong to the url they were fetched for:
+ * when the url changes, both read as undefined until the new url answers.
+ */
 export function usePoll<T>(
   url: string,
   ms = 5000,
 ): { data: T | undefined; error: string | undefined; refresh(): void } {
-  const [data, setData] = useState<T>();
-  const [error, setError] = useState<string>();
+  const [result, setResult] = useState<Result<T>>({ url });
   const runner = useRef<ReturnType<typeof createPollRunner>>();
 
   useEffect(() => {
@@ -18,11 +23,12 @@ export function usePoll<T>(
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as T;
         if (signal.aborted) return;
-        setData(json);
-        setError(undefined);
+        setResult({ url, data: json });
       } catch (err) {
         if (signal.aborted) return;
-        setError(err instanceof Error ? err.message : 'request failed');
+        const error = err instanceof Error ? err.message : 'request failed';
+        // keep the last good data for this url; a failed poll only adds the error
+        setResult((prev) => (prev.url === url ? { ...prev, error } : { url, error }));
       }
     });
     runner.current = r;
@@ -36,5 +42,6 @@ export function usePoll<T>(
   }, [url, ms]);
 
   const refresh = useCallback(() => void runner.current?.request(), []);
-  return { data, error, refresh };
+  const current = result.url === url;
+  return { data: current ? result.data : undefined, error: current ? result.error : undefined, refresh };
 }

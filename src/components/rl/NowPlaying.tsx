@@ -88,7 +88,16 @@ function GlyphArt({ src }: { src: string | null }) {
   return <canvas ref={ref} aria-hidden="true" className="block h-full w-full" />;
 }
 
-export default function NowPlaying({ track, hostName }: { track: Track | null; hostName: string | null }) {
+/** `track` is undefined while loading or when /now-playing fails (`error`), null when nothing is playing. */
+export default function NowPlaying({
+  track,
+  hostName,
+  error,
+}: {
+  track: Track | null | undefined;
+  hostName: string | null;
+  error: boolean;
+}) {
   return (
     <section aria-label="Now playing" className="flex min-w-0 flex-col gap-3.5">
       <div className="aspect-[10/7] w-full overflow-hidden rounded border border-line-20 bg-surface-50">
@@ -105,6 +114,10 @@ export default function NowPlaying({ track, hostName }: { track: Track | null; h
             {track.progressMs !== null && <span className="shrink-0 text-ink-50">{formatProgress(track.progressMs)}</span>}
           </div>
         </>
+      ) : track === undefined ? (
+        <p role={error ? 'status' : undefined} className="font-mono text-xs text-ink-50">
+          {error ? "Can't check what's playing. Retrying." : "checking what's playing"}
+        </p>
       ) : (
         <>
           <h2 className="text-3xl leading-none tracking-[-0.02em] text-ink-60 md:text-4xl">Nothing playing</h2>
