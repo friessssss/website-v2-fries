@@ -49,6 +49,7 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: helper/go.sum
       - name: Build
+        id: build
         working-directory: helper
         env:
           TAG: ${{ github.ref_name }}
@@ -57,6 +58,10 @@ jobs:
           GOARCH: amd64
         run: |
           VERSION="${TAG#helper-v}"
+          case "$VERSION" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
           go build -trimpath \
             -ldflags "-s -w -H windowsgui -X main.version=${VERSION} -X main.baseURL=https://zachrobertson.co" \
             -o RLGoalTracker.exe .
@@ -65,7 +70,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2.2.2
         with:
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ steps.build.outputs.prerelease == 'true' }}
           files: |
             helper/RLGoalTracker.exe
             helper/RLGoalTracker.exe.sha256
